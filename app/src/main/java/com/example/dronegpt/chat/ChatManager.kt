@@ -1,10 +1,16 @@
 package com.example.dronegpt.chat
 
+import android.os.StrictMode
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+
 class ChatManager(
     val model: String = "gpt-3.5-turbo",
     val messages: MutableList<ChatMessage> = mutableListOf()
 ) {
     fun add(message: ChatMessage) {
+        val policy = StrictMode.ThreadPolicy.Builder().permitAll().build()
+        StrictMode.setThreadPolicy(policy)
         messages.add(message)
         val response = ChatCompletionAPI.create(ChatCompletionRequest(model, messages))
         messages.add(response.choices[0].message)
