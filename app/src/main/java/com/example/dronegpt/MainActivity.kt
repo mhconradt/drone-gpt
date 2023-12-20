@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.TextField
+
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -27,15 +29,59 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import com.example.dronegpt.chat.ChatManager
 import com.example.dronegpt.chat.ChatMessage
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val manager = ChatManager(
+            messages = mutableListOf(
+                ChatMessage(
+                    "system",
+                    "You're a helpful assistant"
+                )
+            )
+        )
+
         setContent {
             DroneGPTTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    ConversationHistory(SampleData.conversationSample)
+                    Column {
+                        ConversationHistory(manager.getChatMessages())
+
+                        var text by remember { mutableStateOf("Hello") }
+                        TextField(
+                            value = text,
+                            onValueChange = { text = it },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp),
+                            trailingIcon = {
+                                Button(
+                                    onClick = {
+                                        manager.add(
+                                            ChatMessage("user", text)
+                                        )
+                                        println(text)
+                                        text = "Placeholder"
+                                    }
+                                ) {
+                                    Icon(
+                                        Icons.Rounded.Send,
+                                        contentDescription = "Send"
+                                    )
+                                }
+                            }
+                        )
+                    }
+
                 }
             }
         }
@@ -46,6 +92,10 @@ data class Message(val author: String, val body: String)
 
 @Composable
 fun MessageCard(msg: ChatMessage) {
+    if (msg.role === "system") {
+        return
+    }
+
     Row(modifier = Modifier.padding(all = 8.dp)) {
         var isExpanded by remember { mutableStateOf(false) }
         val surfaceColor by animateColorAsState(
