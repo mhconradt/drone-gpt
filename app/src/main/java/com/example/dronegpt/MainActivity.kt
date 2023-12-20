@@ -41,6 +41,10 @@ import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.SDKManager
 import dji.v5.manager.interfaces.SDKManagerCallback
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     private val TAG = this::class.simpleName
@@ -73,10 +77,21 @@ class MainActivity : ComponentActivity() {
                                 Button(
                                     onClick = {
                                         println(text)
-                                        manager.add(
-                                            ChatMessage("user", text)
-                                        )
-                                        text = "Placeholder"
+                                        Log.i(TAG, "Launching coroutine...")
+                                        // Launching a coroutine
+                                        CoroutineScope(Dispatchers.IO).launch {
+                                            Log.i(TAG, "Launched coroutine...")
+                                            try {
+                                                manager.add(ChatMessage("user", text))
+                                                // Switch back to the Main thread for UI operations
+                                                withContext(Dispatchers.Main) {
+                                                    text = "Placeholder"
+                                                }
+                                            } catch (e: Exception) {
+                                                Log.e(TAG, e.stackTraceToString())
+                                                TODO("Not yet implemented")
+                                            }
+                                        }
                                     }
                                 ) {
                                     Icon(
