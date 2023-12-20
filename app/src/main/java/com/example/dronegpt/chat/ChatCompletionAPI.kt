@@ -13,6 +13,7 @@ object ChatCompletionAPI {
 
     fun create(request: ChatCompletionRequest): ChatCompletionResponse {
         val jsonRequest = gson.toJson(request)
+        println("Calling OpenAI API")
         val body = jsonRequest.toRequestBody("application/json; charset=utf-8".toMediaType())
         val httpRequest = Request.Builder()
             .url("https://api.openai.com/v1/chat/completions")
