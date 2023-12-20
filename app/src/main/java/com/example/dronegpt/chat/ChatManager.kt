@@ -1,8 +1,6 @@
 package com.example.dronegpt.chat
 
 import android.os.StrictMode
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
 
 class ChatManager(
     val model: String = "gpt-3.5-turbo",
