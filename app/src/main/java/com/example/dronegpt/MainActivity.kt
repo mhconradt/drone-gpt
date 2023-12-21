@@ -145,6 +145,7 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 )
+                Log.i(TAG, "Called enableVirtualStick()")
             }
             override fun onProductDisconnect(productId: Int) {
                 Log.i(TAG, "onProductDisconnect: ")
