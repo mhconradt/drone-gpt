@@ -107,7 +107,7 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-
+        registerApp()
     }
 
     private fun registerApp()
@@ -116,6 +116,7 @@ class MainActivity : ComponentActivity() {
             override fun onInitProcess(event: DJISDKInitEvent?, totalProcess: Int) {
                 Log.i(TAG, "onInitProcess: ")
                 if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
+                    Log.i(TAG, "registerApp()")
                     SDKManager.getInstance().registerApp()
                 }
             }
