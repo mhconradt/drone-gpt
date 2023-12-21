@@ -37,9 +37,13 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import com.example.dronegpt.chat.ChatManager
 import com.example.dronegpt.chat.ChatMessage
+import dji.v5.common.callback.CommonCallbacks
+import dji.v5.common.callback.CommonCallbacks.CompletionCallback
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.SDKManager
+import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
+import dji.v5.manager.diagnostic.DeviceStatusManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -129,6 +133,18 @@ class MainActivity : ComponentActivity() {
             override fun onProductConnect(productId: Int)
             {
                 Log.i(TAG, "onProductConnect: ")
+                val statusManager = DeviceStatusManager.getInstance()
+                Log.i(TAG, "Current status: ${statusManager.currentDJIDeviceStatus}")
+                VirtualStickManager.getInstance().enableVirtualStick(
+                    object: CompletionCallback {
+                        override fun onSuccess() {
+                            Log.i(TAG, "enableVirtualStick() succeeded")
+                        }
+                        override fun onFailure(error: IDJIError) {
+                            Log.e(TAG, "enableVirtualStick() failed: $error")
+                        }
+                    }
+                )
             }
             override fun onProductDisconnect(productId: Int) {
                 Log.i(TAG, "onProductDisconnect: ")
