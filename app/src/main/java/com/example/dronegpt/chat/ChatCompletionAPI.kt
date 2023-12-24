@@ -1,5 +1,6 @@
 package com.example.dronegpt.chat
 
+import android.util.Log
 import com.google.gson.Gson
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -8,27 +9,36 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okio.IOException
 
 object ChatCompletionAPI {
+    private val TAG = this::class.simpleName
+
     private val client = OkHttpClient()
     private val gson = Gson()
 
     fun create(request: ChatCompletionRequest): ChatCompletionResponse {
-        val jsonRequest = gson.toJson(request)
-        println("Calling OpenAI API")
-        val body = jsonRequest.toRequestBody("application/json; charset=utf-8".toMediaType())
-        val httpRequest = Request.Builder()
-            .url("https://api.openai.com/v1/chat/completions")
-            .post(body)
-            .addHeader(
-                "Authorization",
-                "Bearer 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"
-            )
-            .build()
+        try {
+            val jsonRequest = gson.toJson(request)
+            Log.i(TAG, jsonRequest)
+            val body = jsonRequest.toRequestBody("application/json; charset=utf-8".toMediaType())
+            val httpRequest = Request.Builder()
+                .url("https://api.openai.com/v1/chat/completions")
+                .post(body)
+                .addHeader(
+                    "Authorization",
+                    "Bearer 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"
+                )
+                .build()
 
-        client.newCall(httpRequest).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Unexpected code $response")
+            client.newCall(httpRequest).execute().use { response ->
+                if (!response.isSuccessful) throw IOException("Unexpected code $response")
 
-            val jsonResponse = response.body?.string()
-            return gson.fromJson(jsonResponse, ChatCompletionResponse::class.java)
+                val jsonResponse = response.body?.string()
+                if (jsonResponse != null) {
+                    Log.i(TAG, jsonResponse)
+                }
+                return gson.fromJson(jsonResponse, ChatCompletionResponse::class.java)
+            }
+        } catch (e: Exception) {
+            TODO("Not yet implemented")
         }
     }
 }
