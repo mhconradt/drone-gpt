@@ -1,5 +1,6 @@
 package com.example.dronegpt
 
+import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
@@ -35,6 +36,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.example.dronegpt.chat.ChatManager
 import com.example.dronegpt.chat.ChatMessage
 import dji.sdk.keyvalue.key.FlightControllerKey
@@ -48,17 +51,44 @@ import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.KeyManager
 import dji.v5.manager.SDKManager
+import dji.v5.manager.aircraft.flightrecord.FlightLogManager
+import dji.v5.manager.aircraft.perception.PerceptionManager
+import dji.v5.manager.aircraft.perception.data.ObstacleAvoidanceType
+import dji.v5.manager.aircraft.simulator.InitializationSettings
+import dji.v5.manager.aircraft.simulator.SimulatorManager
+import dji.v5.manager.aircraft.uas.AreaStrategy
+import dji.v5.manager.aircraft.uas.UASRemoteIDManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
+import dji.v5.manager.diagnostic.DeviceHealthManager
 import dji.v5.manager.diagnostic.DeviceStatusManager
+import dji.v5.manager.interfaces.IPerceptionManager
+import dji.v5.manager.interfaces.ISimulatorManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.io.File
+import android.Manifest
+import dji.v5.utils.common.LocationUtil.getLastLocation
+
 
 class MainActivity : ComponentActivity() {
     private val TAG = this::class.simpleName
+    private val MY_PERMISSIONS_REQUEST_LOCATION = 1
+    private fun checkLocationPermission() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED) {
+            // Permission is not granted, request it
+            ActivityCompat.requestPermissions(this,
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
+                MY_PERMISSIONS_REQUEST_LOCATION)
+        } else {
+            // Permission is already granted, you can use location services
+            getLastLocation()
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -96,39 +126,49 @@ class MainActivity : ComponentActivity() {
                                             try {
                                                 if (text === "Take off") {
                                                     Log.i(TAG, "Attempting takeoff")
-                                                    val motorsOn = KeyManager.getInstance().getValue(
-                                                        KeyTools.createKey(FlightControllerKey.KeyAreMotorsOn)
-                                                    )
+                                                    for (info in DeviceHealthManager.getInstance().currentDJIDeviceHealthInfos) {
+                                                        Log.i(TAG, "Info: ${info.warningLevel()} ${info.title()} ${info.description()} ${info.informationCode()}")
+                                                    }
+
+                                                    val motorsOn =
+                                                        KeyManager.getInstance().getValue(
+                                                            KeyTools.createKey(FlightControllerKey.KeyAreMotorsOn)
+                                                        )
 
                                                     Log.i(TAG, "Are motors on? $motorsOn")
 
-                                                    val signalLevel = KeyManager.getInstance().getValue(
-                                                        KeyTools.createKey(FlightControllerKey.KeyGPSSignalLevel)
-                                                    )
+                                                    val signalLevel =
+                                                        KeyManager.getInstance().getValue(
+                                                            KeyTools.createKey(FlightControllerKey.KeyGPSSignalLevel)
+                                                        )
 
                                                     Log.i(TAG, "Signal Level: $signalLevel")
 
-                                                    val connected = KeyManager.getInstance().getValue(
-                                                        KeyTools.createKey(FlightControllerKey.KeyConnection)
-                                                    )
+                                                    val connected =
+                                                        KeyManager.getInstance().getValue(
+                                                            KeyTools.createKey(FlightControllerKey.KeyConnection)
+                                                        )
 
                                                     Log.i(TAG, "Connected? $connected")
 
-                                                    val flightMode = KeyManager.getInstance().getValue(
-                                                        KeyTools.createKey(FlightControllerKey.KeyRemoteControllerFlightMode)
-                                                    )
+                                                    val flightMode =
+                                                        KeyManager.getInstance().getValue(
+                                                            KeyTools.createKey(FlightControllerKey.KeyRemoteControllerFlightMode)
+                                                        )
 
                                                     Log.i(TAG, "Flight Mode: $flightMode")
 
-                                                    val rcConnected = KeyManager.getInstance().getValue(
-                                                        KeyTools.createKey(RemoteControllerKey.KeyConnection)
-                                                    )
+                                                    val rcConnected =
+                                                        KeyManager.getInstance().getValue(
+                                                            KeyTools.createKey(RemoteControllerKey.KeyConnection)
+                                                        )
 
                                                     Log.i(TAG, "RC Connected? $rcConnected")
 
-                                                    val location = KeyManager.getInstance().getValue(
-                                                        KeyTools.createKey(FlightControllerKey.KeyAircraftLocation)
-                                                    )
+                                                    val location =
+                                                        KeyManager.getInstance().getValue(
+                                                            KeyTools.createKey(FlightControllerKey.KeyAircraftLocation)
+                                                        )
 
                                                     Log.i(TAG, "Location $location")
 
@@ -144,37 +184,58 @@ class MainActivity : ComponentActivity() {
 
                                                                 Log.i(TAG, "ATTEMPTING TAKEOFF")
 
-                                                                KeyManager.getInstance().performAction(
-                                                                    KeyTools.createKey(FlightControllerKey.KeyStartTakeoff),
-                                                                    object :
-                                                                        CompletionCallbackWithParam<EmptyMsg> {
-                                                                        override fun onSuccess(nil: EmptyMsg) {
-                                                                            Log.i(TAG, "Taking off")
-                                                                        }
+                                                                KeyManager.getInstance()
+                                                                    .performAction(
+                                                                        KeyTools.createKey(
+                                                                            FlightControllerKey.KeyStartTakeoff
+                                                                        ),
+                                                                        object :
+                                                                            CompletionCallbackWithParam<EmptyMsg> {
+                                                                            override fun onSuccess(
+                                                                                nil: EmptyMsg
+                                                                            ) {
+                                                                                Log.i(
+                                                                                    TAG,
+                                                                                    "Taking off"
+                                                                                )
+                                                                            }
 
-                                                                        override fun onFailure(error: IDJIError) {
-                                                                            Log.e(TAG, "Takeoff failed $error")
+                                                                            override fun onFailure(
+                                                                                error: IDJIError
+                                                                            ) {
+                                                                                Log.e(
+                                                                                    TAG,
+                                                                                    "Takeoff failed $error"
+                                                                                )
+
+                                                                                // val path = FlightLogManager.getInstance().flyClogPath
+                                                                                // val file = File(path)
+                                                                                // Log.i(TAG, "Log file: ${file.readText()}")
+                                                                            }
                                                                         }
-                                                                    }
-                                                                )
+                                                                    )
                                                             }
 
                                                             override fun onFailure(error: IDJIError) {
-                                                                Log.e(TAG, "Set home location failed $error")
+                                                                Log.e(
+                                                                    TAG,
+                                                                    "Set home location failed $error"
+                                                                )
                                                             }
                                                         }
                                                     )
 
                                                     Log.i(TAG, "Setting home location")
 
-                                                    val serialNumber = KeyManager.getInstance().getValue(
-                                                        KeyTools.createKey(FlightControllerKey.KeySerialNumber)
-                                                    )
+                                                    val serialNumber =
+                                                        KeyManager.getInstance().getValue(
+                                                            KeyTools.createKey(FlightControllerKey.KeySerialNumber)
+                                                        )
 
                                                     Log.i(TAG, "Serial number $serialNumber")
                                                 }
 
-                                                if (text === "Land") {
+                                                if (text.lowercase().contains("land")) {
                                                     Log.i(TAG, "Attempting landing")
                                                     KeyManager.getInstance().performAction(
                                                         KeyTools.createKey(FlightControllerKey.KeyStartAutoLanding),
@@ -215,8 +276,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-
         registerApp()
+        checkLocationPermission()
     }
 
     private fun registerApp() {
@@ -241,6 +302,44 @@ class MainActivity : ComponentActivity() {
                 Log.i(TAG, "onProductConnect: ")
                 val statusManager = DeviceStatusManager.getInstance()
                 Log.i(TAG, "Current status: ${statusManager.currentDJIDeviceStatus}")
+
+                // SimulatorManager.getInstance().enableSimulator(
+                //     InitializationSettings.createInstance(
+                //         LocationCoordinate2D(37.44601560124988, -122.15639375795153),
+                //         5,
+                //     ),
+                //     object: CompletionCallback {
+                //         override fun onSuccess() {
+                //             Log.i(TAG, "Simulator enabled")
+                //         }
+                //
+                //         override fun onFailure(error: IDJIError) {
+                //             Log.e(TAG, "enableSimulator failed: $error")
+                //         }
+                //
+                //     }
+                // )
+
+                val error = UASRemoteIDManager.getInstance()
+                    .setUASRemoteIDAreaStrategy(AreaStrategy.US_STRATEGY)
+
+                if (error != null) {
+                    Log.e(TAG, "setUASRemoteIDAreaStrategy error: $error")
+                }
+
+                val obstacleAvoidanceType = PerceptionManager.getInstance().getObstacleAvoidanceType(
+                    object: CompletionCallbackWithParam<ObstacleAvoidanceType> {
+                        override fun onSuccess(t: ObstacleAvoidanceType?) {
+                            Log.i(TAG, "Got obstacle avoidance type $t")
+                        }
+
+                        override fun onFailure(error: IDJIError) {
+                            Log.e(TAG, "getObstacleAvoidanceType failed: $error")
+                        }
+
+                    }
+                )
+
                 if (false) {
                     VirtualStickManager.getInstance().enableVirtualStick(
                         object : CompletionCallback {

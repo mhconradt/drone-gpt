@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 rootProject.name = "DroneGPT"
 include ':app'
 include ':android-sdk-v5-uxsdk'
+project(':android-sdk-v5-uxsdk').projectDir = new File(rootDir, 'app/libs/android-sdk-v5-uxsdk/')
