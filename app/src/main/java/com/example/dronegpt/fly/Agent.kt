@@ -67,7 +67,8 @@ fun main() {
                     )
                 )
             )
-        )
+        ),
+        1024
     )
 
     val response = ChatCompletionAPI.create(request)

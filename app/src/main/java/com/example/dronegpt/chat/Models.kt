@@ -99,4 +99,4 @@ data class ChatCompletionResponseChoice(val message: ChatMessage)
 
 data class ChatCompletionResponse(val choices: List<ChatCompletionResponseChoice>)
 
-data class ChatCompletionRequest(val model: String, val messages: List<ChatMessage>)
+data class ChatCompletionRequest(val model: String, val messages: List<ChatMessage>, val max_tokens: Int? = null)
