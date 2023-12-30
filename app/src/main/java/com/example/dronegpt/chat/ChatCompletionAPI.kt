@@ -31,7 +31,11 @@ object ChatCompletionAPI {
                 .build()
 
             client.newCall(httpRequest).execute().use { response ->
-                if (!response.isSuccessful) throw IOException("Unexpected code $response")
+
+                if (!response.isSuccessful) {
+                    println(response.body?.string())
+                    throw IOException("Unexpected response ${response.message}")
+                }
 
                 val jsonResponse = response.body?.string()
 

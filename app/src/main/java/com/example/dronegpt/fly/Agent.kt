@@ -1,11 +1,18 @@
 package com.example.dronegpt.fly
 
+import com.example.dronegpt.chat.ChatAssistantMessage
 import com.example.dronegpt.chat.ChatCompletionAPI
 import com.example.dronegpt.chat.ChatCompletionRequest
 import com.example.dronegpt.chat.ChatImageMessage
+import com.example.dronegpt.chat.ChatMessage
+import com.example.dronegpt.chat.ChatUserMessage
+import com.example.dronegpt.chat.ContentPart
+import com.example.dronegpt.chat.Function
 import com.example.dronegpt.chat.ImageUrlContentPart
 import com.example.dronegpt.chat.RawImageUrl
 import com.example.dronegpt.chat.TextContentPart
+import com.example.dronegpt.chat.Tool
+import com.google.gson.Gson
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -44,12 +51,133 @@ data class State(
 // data class AssistantMessage(val content: String)
 
 
+object VisionManager {
+    val image: ByteArray? = null
+}
+
+object StateManager {
+    val state: State? = null
+}
+
+object FlightManager {
+
+}
+
+object Agent {
+    val model: String = "gpt-4-vision-preview"
+    val messages: MutableList<ChatMessage> = mutableListOf()
+
+    val tools: List<Tool> = listOf(
+        Tool(
+            "function",
+            Function(
+                "take_off",
+                "Signals the aircraft to take off. " +
+                        "It will climb to an altitude of 1.2m and then hover until it receives further instructions."
+            ),
+        ),
+        Tool(
+            "function",
+            Function(
+                "land",
+                "Signals the aircraft to land. " +
+                        "The surrounding volume must be clear of obstacles and should always be safe for takeoff."
+            )
+        ),
+        Tool(
+            "function",
+            Function(
+                "adjust_controls",
+                "Adjust the drone's controls.",
+                mapOf(
+                    "type" to "object",
+                    "properties" to mapOf(
+                        "leftStick" to mapOf(
+                            "description" to "Left stick controls the yaw axis and throttle of the aircraft. " +
+                                    "Negative horizontalPosition rotates the aircraft counterclockwise, " +
+                                    "positive rotates it clockwise. " +
+                                    "Positive verticalPosition increases altitude, negative lowers it.",
+                            "properties" to mapOf(
+                                "horizontalPosition" to mapOf(
+                                    "type" to "number",
+                                    "description" to "Negative for left, positive for right movement."
+                                ),
+                                "verticalPosition" to mapOf(
+                                    "type" to "number",
+                                    "description" to "Positive for upward, negative for downward movement."
+                                )
+                            ),
+                            "type" to "object"
+                        ),
+                        "rightStick" to mapOf(
+                            "description" to "Right stick controls the roll axis and pitch axis of the aircraft. " +
+                                    "Negative horizontalPosition makes the aircraft fly left, " +
+                                    "positive makes it fly right. " +
+                                    "Positive verticalPosition makes the aircraft fly forward, negative flies it backward.",
+                            "properties" to mapOf(
+                                "horizontalPosition" to mapOf(
+                                    "type" to "number",
+                                    "description" to "Negative for left, positive for right movement."
+                                ),
+                                "verticalPosition" to mapOf(
+                                    "type" to "number",
+                                    "description" to "Positive for forward, negative for backward movement."
+                                )
+                            ),
+                            "type" to "object"
+                        )
+                    )
+                )
+            )
+        )
+    )
+
+    @OptIn(ExperimentalEncodingApi::class)
+    fun run(command: ChatUserMessage) {
+        messages.add(command)
+
+        val gson = Gson()
+
+        while (true) {
+            if (VisionManager.image != null && StateManager.state != null) {
+                val state = gson.toJson(StateManager.state)
+                val contentParts = listOf<ContentPart>(
+                    TextContentPart("text", state),
+                    ImageUrlContentPart(
+                        "image_url", RawImageUrl(
+                            "data:image/jpeg;base64,${Base64.encode(VisionManager.image)}",
+                            "An image captured from the drone's camera."
+                        )
+                    )
+                )
+                val imageMessage = ChatImageMessage("user", contentParts)
+                messages.add(imageMessage)
+            }
+            val request = ChatCompletionRequest(model, messages, 256)
+            val response = ChatCompletionAPI.create(request)
+            val completionMessage = response.choices[0].message
+            messages.add(completionMessage)
+            if (completionMessage is ChatAssistantMessage) {
+                val toolCalls = completionMessage.tool_calls
+                if (toolCalls.isNullOrEmpty()) {
+                    return
+                }
+            }
+        }
+    }
+}
+
+
 @OptIn(ExperimentalEncodingApi::class)
 fun main() {
-    val encoded = Base64.encode(java.io.File("/Users/maxwellconradt/Documents/sandzenPainting1.jpg").readBytes())
+    val gson = Gson()
+
+    val encoded = Base64.encode(
+        java.io.File("/Users/maxwellconradt/Documents/sandzenPainting1.jpg").readBytes()
+    )
 
     val request = ChatCompletionRequest(
-        "gpt-4-vision-preview",
+        "gpt-4",
         listOf(
             ChatImageMessage(
                 "user",

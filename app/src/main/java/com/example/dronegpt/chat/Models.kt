@@ -9,8 +9,10 @@ sealed class ContentPart
 data class TextContentPart(val type: String, val text: String) : ContentPart()
 data class RawImageUrl(val url: String, val detail: String)
 data class ImageUrlContentPart(val type: String, val image_url: RawImageUrl) : ContentPart()
-data class OpenAIFunction(val name: String, val arguments: String)
-data class ToolCall(val id: String, val type: String, val function: OpenAIFunction)
+
+
+data class FunctionCall(val name: String, val arguments: String)
+data class ToolCall(val id: String, val type: String, val function: FunctionCall)
 
 sealed class ChatMessage
 
@@ -31,6 +33,14 @@ data class ChatAssistantMessage(
 data class ChatToolMessage(val role: String, val content: String, val tool_call_id: String) :
     ChatMessage()
 
+data class Function(
+    val name: String,
+    val description: String,
+    val parameters: Map<String, Any> = mapOf()
+)
+
+data class Tool(val type: String = "function", val function: Function)
+
 
 /*
 Types of messages:
@@ -50,7 +60,11 @@ ASSISTANT MESSAGE
 
 
 class ChatMessageDeserializer : JsonDeserializer<ChatMessage> {
-    override fun deserialize(json: JsonElement, typeOfT: Type, context: JsonDeserializationContext): ChatMessage {
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type,
+        context: JsonDeserializationContext
+    ): ChatMessage {
         val jsonObject = json.asJsonObject
 
         val role: String = jsonObject.get("role").asString
@@ -73,7 +87,7 @@ class ChatMessageDeserializer : JsonDeserializer<ChatMessage> {
 }
 
 
-class ContentPartDeserializer: JsonDeserializer<ContentPart> {
+class ContentPartDeserializer : JsonDeserializer<ContentPart> {
     override fun deserialize(
         json: JsonElement,
         typeOfT: Type,
@@ -99,4 +113,9 @@ data class ChatCompletionResponseChoice(val message: ChatMessage)
 
 data class ChatCompletionResponse(val choices: List<ChatCompletionResponseChoice>)
 
-data class ChatCompletionRequest(val model: String, val messages: List<ChatMessage>, val max_tokens: Int? = null)
+data class ChatCompletionRequest(
+    val model: String,
+    val messages: List<ChatMessage>,
+    val max_tokens: Int? = null,
+    val tools: List<Tool>? = null
+)
