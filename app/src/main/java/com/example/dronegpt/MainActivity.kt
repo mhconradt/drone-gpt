@@ -1,77 +1,71 @@
 package com.example.dronegpt
 
+import android.Manifest
 import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.TextField
-
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import com.example.compose.jetchat.theme.DroneGPTTheme
 import androidx.compose.foundation.lazy.items
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.animateContentSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import com.example.compose.jetchat.theme.DroneGPTTheme
+import com.example.dronegpt.chat.ChatAssistantMessage
 import com.example.dronegpt.chat.ChatManager
 import com.example.dronegpt.chat.ChatMessage
+import com.example.dronegpt.chat.ChatSystemMessage
+import com.example.dronegpt.chat.ChatUserMessage
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.RemoteControllerKey
 import dji.sdk.keyvalue.value.common.EmptyMsg
-import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.v5.common.callback.CommonCallbacks.CompletionCallback
 import dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithParam
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.KeyManager
 import dji.v5.manager.SDKManager
-import dji.v5.manager.aircraft.flightrecord.FlightLogManager
 import dji.v5.manager.aircraft.perception.PerceptionManager
 import dji.v5.manager.aircraft.perception.data.ObstacleAvoidanceType
-import dji.v5.manager.aircraft.simulator.InitializationSettings
-import dji.v5.manager.aircraft.simulator.SimulatorManager
 import dji.v5.manager.aircraft.uas.AreaStrategy
 import dji.v5.manager.aircraft.uas.UASRemoteIDManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import dji.v5.manager.diagnostic.DeviceHealthManager
 import dji.v5.manager.diagnostic.DeviceStatusManager
-import dji.v5.manager.interfaces.IPerceptionManager
-import dji.v5.manager.interfaces.ISimulatorManager
 import dji.v5.manager.interfaces.SDKManagerCallback
+import dji.v5.utils.common.LocationUtil.getLastLocation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.io.File
-import android.Manifest
-import dji.v5.utils.common.LocationUtil.getLastLocation
 
 
 class MainActivity : ComponentActivity() {
@@ -94,7 +88,7 @@ class MainActivity : ComponentActivity() {
 
         val manager = ChatManager(
             messages = mutableListOf(
-                ChatMessage(
+                ChatSystemMessage(
                     "system",
                     "You're a helpful assistant in charge of flying a drone on behalf of the " +
                             "user."
@@ -252,7 +246,7 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 }
 
-                                                manager.add(ChatMessage("user", text))
+                                                manager.add(ChatUserMessage("user", text))
                                                 // Switch back to the Main thread for UI operations
                                                 withContext(Dispatchers.Main) {
                                                     text = "Take off"
@@ -378,37 +372,66 @@ data class Message(val author: String, val body: String)
 
 @Composable
 fun MessageCard(msg: ChatMessage) {
-    if (msg.role === "system") {
-        return
-    }
-
-    Row(modifier = Modifier.padding(all = 8.dp)) {
-        var isExpanded by remember { mutableStateOf(false) }
-        val surfaceColor by animateColorAsState(
-            if (isExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-        )
-
-        Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
-            Text(
-                text = msg.role,
-                color = MaterialTheme.colorScheme.secondary,
-                style = MaterialTheme.typography.titleSmall
+    if (msg is ChatAssistantMessage) {
+        Row(modifier = Modifier.padding(all = 8.dp)) {
+            var isExpanded by remember { mutableStateOf(false) }
+            val surfaceColor by animateColorAsState(
+                if (isExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            Surface(
-                shape = MaterialTheme.shapes.medium,
-                shadowElevation = 1.dp,
-                color = surfaceColor,
-                modifier = Modifier
-                    .animateContentSize()
-                    .padding(1.dp)
-            ) {
+
+            Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
                 Text(
-                    text = msg.content,
-                    modifier = Modifier.padding(all = 4.dp),
-                    maxLines = if (isExpanded) Int.MAX_VALUE else 1,
-                    style = MaterialTheme.typography.bodyMedium
+                    text = msg.role,
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.titleSmall
                 )
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    shadowElevation = 1.dp,
+                    color = surfaceColor,
+                    modifier = Modifier
+                        .animateContentSize()
+                        .padding(1.dp)
+                ) {
+                    Text(
+                        text = msg.content,
+                        modifier = Modifier.padding(all = 4.dp),
+                        maxLines = if (isExpanded) Int.MAX_VALUE else 1,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+    } else if (msg is ChatAssistantMessage) {
+        Row(modifier = Modifier.padding(all = 8.dp)) {
+            var isExpanded by remember { mutableStateOf(false) }
+            val surfaceColor by animateColorAsState(
+                if (isExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+            )
+
+            Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
+                Text(
+                    text = msg.role,
+                    color = MaterialTheme.colorScheme.secondary,
+                    style = MaterialTheme.typography.titleSmall
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Surface(
+                    shape = MaterialTheme.shapes.medium,
+                    shadowElevation = 1.dp,
+                    color = surfaceColor,
+                    modifier = Modifier
+                        .animateContentSize()
+                        .padding(1.dp)
+                ) {
+                    Text(
+                        text = msg.content,
+                        modifier = Modifier.padding(all = 4.dp),
+                        maxLines = if (isExpanded) Int.MAX_VALUE else 1,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
             }
         }
     }
@@ -422,7 +445,7 @@ fun MessageCard(msg: ChatMessage) {
 )
 @Composable
 fun PreviewMessageCard() {
-    MessageCard(ChatMessage("assistant", "Hi, how can I help you today?"))
+    MessageCard(ChatAssistantMessage("assistant", "Hi, how can I help you today?", listOf()))
 }
 
 /**
@@ -432,16 +455,14 @@ fun PreviewMessageCard() {
 object SampleData {
     // Sample conversation data
     val conversationSample = listOf(
-        ChatMessage(
-            "user",
+        ChatUserMessage("user",
             "Hello",
         ),
-        ChatMessage(
-            "assistant",
-            "Hi, how can I help you today?"
+        ChatAssistantMessage("assistant",
+            "Hi, how can I help you today?",
+            listOf()
         ),
-        ChatMessage(
-            "user",
+        ChatUserMessage("user",
             "I want to fly my drone"
         )
     )

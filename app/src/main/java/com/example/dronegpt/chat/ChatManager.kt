@@ -16,12 +16,12 @@ class ChatManager(
 
     fun getChatMessages(): List<ChatMessage> = messages
 
-    fun lastAssistantMessage(): ChatMessage? = messages.lastOrNull { it.role == "assistant" }
-    fun lastUserMessage(): ChatMessage? = messages.lastOrNull { it.role == "user" }
+    fun lastAssistantMessage(): ChatAssistantMessage? = messages.lastOrNull { it is ChatAssistantMessage } as? ChatAssistantMessage
+    fun lastUserMessage(): ChatMessage? = messages.lastOrNull { it is ChatUserMessage } as? ChatUserMessage
 }
 
 fun main() {
-    val systemPrompt = ChatMessage(
+    val systemPrompt = ChatSystemMessage(
         "system",
         "You're a helpful assistant being used in a command line interface (CLI)."
     )
@@ -33,7 +33,7 @@ fun main() {
             println("Goodbye")
             return
         }
-        val userMessage = ChatMessage("user", input)
+        val userMessage = ChatUserMessage("user", input)
         chatManager.add(userMessage)
         println(chatManager.lastAssistantMessage()?.content)
     }

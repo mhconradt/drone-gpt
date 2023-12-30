@@ -1,7 +1,6 @@
 package com.example.dronegpt.chat
 
-import android.util.Log
-import com.google.gson.Gson
+import com.google.gson.GsonBuilder
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -12,12 +11,15 @@ object ChatCompletionAPI {
     private val TAG = this::class.simpleName
 
     private val client = OkHttpClient()
-    private val gson = Gson()
+    private val gson = GsonBuilder()
+        .registerTypeAdapter(ChatMessage::class.java, ChatMessageDeserializer())
+        .registerTypeAdapter(ContentPart::class.java, ContentPartDeserializer())
+        .create()
 
     fun create(request: ChatCompletionRequest): ChatCompletionResponse {
         try {
             val jsonRequest = gson.toJson(request)
-            Log.i(TAG, jsonRequest)
+            println("hi")
             val body = jsonRequest.toRequestBody("application/json; charset=utf-8".toMediaType())
             val httpRequest = Request.Builder()
                 .url("https://api.openai.com/v1/chat/completions")
@@ -32,19 +34,22 @@ object ChatCompletionAPI {
                 if (!response.isSuccessful) throw IOException("Unexpected code $response")
 
                 val jsonResponse = response.body?.string()
+
+
                 if (jsonResponse != null) {
-                    Log.i(TAG, jsonResponse)
+                    println(jsonResponse)
                 }
                 return gson.fromJson(jsonResponse, ChatCompletionResponse::class.java)
             }
         } catch (e: Exception) {
+            println(e)
             TODO("Not yet implemented")
         }
     }
 }
 
 fun main() {
-    val systemPrompt = ChatMessage(
+    val systemPrompt = ChatSystemMessage(
         "system",
         "You're a helpful assistant being used in a command line interface (CLI)."
     )
@@ -55,10 +60,10 @@ fun main() {
             println("Goodbye")
             return
         }
-        val userMessage = ChatMessage("user", input)
+        val userMessage = ChatUserMessage("user", input)
         messages.add(userMessage)
         val response = ChatCompletionAPI.create(ChatCompletionRequest("gpt-3.5-turbo", messages))
         messages.add(response.choices[0].message)
-        println(messages.last().content)
+        println(messages.last())
     }
 }
