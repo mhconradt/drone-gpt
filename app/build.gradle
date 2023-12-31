@@ -85,9 +85,9 @@ android {
 }
 
 dependencies {
-    implementation 'com.dji:dji-sdk-v5-aircraft:5.7.2'
-    compileOnly 'com.dji:dji-sdk-v5-aircraft-provided:5.7.2'
-    runtimeOnly 'com.dji:dji-sdk-v5-networkImp:5.7.2'
+    implementation 'com.dji:dji-sdk-v5-aircraft:5.8.0'
+    compileOnly 'com.dji:dji-sdk-v5-aircraft-provided:5.8.0'
+    runtimeOnly 'com.dji:dji-sdk-v5-networkImp:5.8.0'
     runtimeOnly group: 'androidx.compose.material3', name: 'material3', version: '1.1.2'
     implementation "com.google.dagger:hilt-android:2.44"
     kapt "com.google.dagger:hilt-compiler:2.44"
