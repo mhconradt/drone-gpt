@@ -277,8 +277,6 @@ object VisionManager {
         cStreamManager.addFrameListener(ComponentIndexType.LEFT_OR_MAIN, ICameraStreamManager.FrameFormat.NV21
         ) { frameData, offset, length, width, height, format ->
             val relevantData = frameData.copyOfRange(offset, offset + length)
-            println("recv $length bytes $format data")
-
             image = when (format) {
                 ICameraStreamManager.FrameFormat.RGBA_8888 -> {
                     convertRGBA8888ToJpeg(relevantData, width, height)
