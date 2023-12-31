@@ -21,6 +21,8 @@ import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.EmptyMsg
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
+import dji.v5.et.get
+import dji.v5.et.listen
 import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import java.lang.reflect.Type
@@ -121,31 +123,109 @@ data class Controls(
 
 data class State(
     // KeyAircraftLocation3D: To get the position of the aircraft, including longitude, latitude and altitude.
-    var longitude: Double,
-    var latitude: Double,
-    var altitude: Double,
+    var longitude: Double? = null,
+    var latitude: Double? = null,
+    var altitude: Double? = null,
     // Velocity3D: Current flight speed of the aircraft using NED coordinate system.
-    var xVelocity: Double, // East-west speed (m/s)
-    var yVelocity: Double, // North-south speed (m/s)
-    var zVelocity: Double, // Up-down speed (m/s)
+    // East-west speed (m/s)
+    var xVelocity: Double? = null,
+    // North-south speed (m/s)
+    var yVelocity: Double? = null,
+    // Up-down speed (m/s)
+    var zVelocity: Double? = null,
     // KeyCompassHeading: North is 0 degrees, east is 90 degrees. The value range is [-180,180]. Unit: (˚).
-    var compassHeading: Double,
-    var sticks: Controls,
+    var compassHeading: Double? = null,
+    var sticks: Controls? = null,
 )
 
+
+object StateManager {
+    val state: State = State()
+
+    fun initialize() {
+        // Retrieve initial values
+
+        val location3D = KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D).get()
+        val velocity3D = KeyTools.createKey(FlightControllerKey.KeyAircraftVelocity).get()
+        val compassHeading = KeyTools.createKey(FlightControllerKey.KeyCompassHeading).get()
+
+        val stickManager = VirtualStickManager.getInstance()
+        val controls = Controls(
+            StickPosition(
+                stickManager.leftStick.verticalPosition,
+                stickManager.leftStick.horizontalPosition
+            ),
+            StickPosition(
+                stickManager.rightStick.verticalPosition,
+                stickManager.rightStick.horizontalPosition,
+            )
+        )
+
+        // Set initial values
+
+        state.longitude = location3D?.longitude
+        state.latitude = location3D?.latitude
+        state.altitude = location3D?.altitude
+        state.xVelocity = velocity3D?.x
+        state.yVelocity = velocity3D?.y
+        state.zVelocity = velocity3D?.z
+        state.compassHeading = compassHeading
+        state.sticks = controls
+
+        // Listen for updates
+
+        KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D).listen(
+            this,
+            false
+        ) {
+            if (it != null) {
+                state.longitude = it.longitude
+                state.latitude = it.latitude
+                state.altitude = it.altitude
+            }
+        }
+
+        KeyTools.createKey(FlightControllerKey.KeyAircraftVelocity).listen(
+            this,
+            false
+        ) {
+            if (it != null) {
+                state.xVelocity = it.x
+                state.yVelocity = it.y
+                state.zVelocity = it.z
+            }
+        }
+
+        KeyTools.createKey(FlightControllerKey.KeyCompassHeading).listen(
+            this,
+            false
+        ) {
+            if (it != null) {
+                state.compassHeading = it
+            }
+        }
+
+        // Controls are set externally
+    }
+}
 
 object VisionManager {
     val image: ByteArray? = null
 
     fun initialize() {
+        // KeyTools.createKey(CameraKey.KeyPhotoFileFormatRange).set(
+        //     mutableListOf(PhotoFileFormat.JPEG)
+        // )
+        // KeyTools.createKey(CameraKey.KeyCameraMode).set(
+        //     CameraMode.PHOTO_INTERVAL
+        // )
+        // KeyTools.createKey(CameraKey.KeyPhotoIntervalShootSettings).set(
+        //     PhotoIntervalShootSettings(
+        //         1800, // TODO: Max flight time of one hour.
+        //         2.0   // Shoot every 5 seconds, the minimum is 2 seconds
+        //     )
+        // )
 
-    }
-}
-
-object StateManager {
-    val state: State? = null
-
-    fun initialize() {
 
     }
 }
@@ -182,12 +262,17 @@ object FlightManager {
 
             is Control -> {
                 val stickManager = VirtualStickManager.getInstance()
-                stickManager.leftStick.verticalPosition = instruction.controls.leftStick.verticalPosition
-                stickManager.leftStick.horizontalPosition = instruction.controls.leftStick.horizontalPosition
-                stickManager.rightStick.verticalPosition = instruction.controls.rightStick.verticalPosition
-                stickManager.rightStick.horizontalPosition = instruction.controls.rightStick.horizontalPosition
-                StateManager.state?.sticks = instruction.controls
+                stickManager.leftStick.verticalPosition =
+                    instruction.controls.leftStick.verticalPosition
+                stickManager.leftStick.horizontalPosition =
+                    instruction.controls.leftStick.horizontalPosition
+                stickManager.rightStick.verticalPosition =
+                    instruction.controls.rightStick.verticalPosition
+                stickManager.rightStick.horizontalPosition =
+                    instruction.controls.rightStick.horizontalPosition
+                StateManager.state.sticks = instruction.controls
             }
+
             is Land -> {
                 KeyManager.getInstance()
                     .performAction(
