@@ -5,14 +5,25 @@ import com.example.dronegpt.chat.ChatCompletionAPI
 import com.example.dronegpt.chat.ChatCompletionRequest
 import com.example.dronegpt.chat.ChatImageMessage
 import com.example.dronegpt.chat.ChatMessage
+import com.example.dronegpt.chat.ChatSystemMessage
 import com.example.dronegpt.chat.ChatUserMessage
 import com.example.dronegpt.chat.ContentPart
-import com.example.dronegpt.chat.Function
 import com.example.dronegpt.chat.ImageUrlContentPart
 import com.example.dronegpt.chat.RawImageUrl
 import com.example.dronegpt.chat.TextContentPart
-import com.example.dronegpt.chat.Tool
 import com.google.gson.Gson
+import com.google.gson.GsonBuilder
+import com.google.gson.JsonDeserializationContext
+import com.google.gson.JsonDeserializer
+import com.google.gson.JsonElement
+import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.value.common.EmptyMsg
+import dji.v5.common.callback.CommonCallbacks
+import dji.v5.common.error.IDJIError
+import dji.v5.manager.KeyManager
+import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
+import java.lang.reflect.Type
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -110,107 +121,137 @@ data class Controls(
 
 data class State(
     // KeyAircraftLocation3D: To get the position of the aircraft, including longitude, latitude and altitude.
-    val longitude: Double,
-    val latitude: Double,
-    val altitude: Double,
+    var longitude: Double,
+    var latitude: Double,
+    var altitude: Double,
     // Velocity3D: Current flight speed of the aircraft using NED coordinate system.
-    val xVelocity: Double, // East-west speed (m/s)
-    val yVelocity: Double, // North-south speed (m/s)
-    val zVelocity: Double, // Up-down speed (m/s)
+    var xVelocity: Double, // East-west speed (m/s)
+    var yVelocity: Double, // North-south speed (m/s)
+    var zVelocity: Double, // Up-down speed (m/s)
     // KeyCompassHeading: North is 0 degrees, east is 90 degrees. The value range is [-180,180]. Unit: (˚).
-    val compassHeading: Double,
-    val sticks: Controls,
+    var compassHeading: Double,
+    var sticks: Controls,
 )
-
-// sealed class AgentMessage {
-//     abstract fun toOpenAI()
-// }
-//
-// data class SystemMessage(val role: String, val content: String)
-// data class UserMessage(val role: String, val content: String)
-// data class ImageMessage(val text: String, val image_url: String)
-// data class ControlMessage(val controls: Controls)
-// data class AssistantMessage(val content: String)
 
 
 object VisionManager {
     val image: ByteArray? = null
+
+    fun initialize() {
+
+    }
 }
 
 object StateManager {
     val state: State? = null
+
+    fun initialize() {
+
+    }
 }
 
 object FlightManager {
+    fun execute(instruction: Instruction) {
+        when (instruction) {
+            is TakeOff -> {
+                KeyManager.getInstance()
+                    .performAction(
+                        KeyTools.createKey(
+                            FlightControllerKey.KeyStartTakeoff
+                        ),
+                        object :
+                            CommonCallbacks.CompletionCallbackWithParam<EmptyMsg> {
+                            override fun onSuccess(
+                                nil: EmptyMsg
+                            ) {
+                                println(
+                                    "Taking off"
+                                )
+                            }
+
+                            override fun onFailure(
+                                error: IDJIError
+                            ) {
+                                println(
+                                    "Takeoff failed $error"
+                                )
+                            }
+                        }
+                    )
+            }
+
+            is Control -> {
+                val stickManager = VirtualStickManager.getInstance()
+                stickManager.leftStick.verticalPosition = instruction.controls.leftStick.verticalPosition
+                stickManager.leftStick.horizontalPosition = instruction.controls.leftStick.horizontalPosition
+                stickManager.rightStick.verticalPosition = instruction.controls.rightStick.verticalPosition
+                stickManager.rightStick.horizontalPosition = instruction.controls.rightStick.horizontalPosition
+                StateManager.state?.sticks = instruction.controls
+            }
+            is Land -> {
+                KeyManager.getInstance()
+                    .performAction(
+                        KeyTools.createKey(
+                            FlightControllerKey.KeyStartAutoLanding
+                        ),
+                        object :
+                            CommonCallbacks.CompletionCallbackWithParam<EmptyMsg> {
+                            override fun onSuccess(
+                                nil: EmptyMsg
+                            ) {
+                                println(
+                                    "Taking off"
+                                )
+                            }
+
+                            override fun onFailure(
+                                error: IDJIError
+                            ) {
+                                println(
+                                    "Takeoff failed $error"
+                                )
+                            }
+                        }
+                    )
+            }
+        }
+    }
+}
+
+sealed class Instruction
+
+data class TakeOff(val type: String) : Instruction()
+data class Land(val type: String) : Instruction()
+
+data class Control(val type: String, val controls: Controls) : Instruction()
+
+class InstructionDeserializer : JsonDeserializer<Instruction> {
+    override fun deserialize(
+        json: JsonElement,
+        typeOfT: Type,
+        context: JsonDeserializationContext
+    ): Instruction {
+        val jsonObject = json.asJsonObject
+
+        return when (jsonObject.get("type").asString) {
+            "control" -> context.deserialize<Control>(json, Control::class.java)
+            "take_off" -> context.deserialize<TakeOff>(json, TakeOff::class.java)
+            "land" -> context.deserialize<Land>(json, Land::class.java)
+            else -> {
+                throw IllegalStateException(json.toString())
+            }
+        }
+    }
 
 }
 
+
 object Agent {
     val model: String = "gpt-4-vision-preview"
-    val messages: MutableList<ChatMessage> = mutableListOf()
-
-    val tools: List<Tool> = listOf(
-        Tool(
-            "function",
-            Function(
-                "take_off",
-                "Signals the aircraft to take off. " +
-                        "It will climb to an altitude of 1.2m and then hover until it receives further instructions."
-            ),
-        ),
-        Tool(
-            "function",
-            Function(
-                "land",
-                "Signals the aircraft to land. " +
-                        "The surrounding volume must be clear of obstacles and should always be safe for takeoff."
-            )
-        ),
-        Tool(
-            "function",
-            Function(
-                "adjust_controls",
-                "Adjust the drone's controls.",
-                mapOf(
-                    "type" to "object",
-                    "properties" to mapOf(
-                        "leftStick" to mapOf(
-                            "description" to "Left stick controls the yaw axis and throttle of the aircraft. " +
-                                    "Negative horizontalPosition rotates the aircraft counterclockwise, " +
-                                    "positive rotates it clockwise. " +
-                                    "Positive verticalPosition increases altitude, negative lowers it.",
-                            "properties" to mapOf(
-                                "horizontalPosition" to mapOf(
-                                    "type" to "number",
-                                    "description" to "Negative for left, positive for right movement."
-                                ),
-                                "verticalPosition" to mapOf(
-                                    "type" to "number",
-                                    "description" to "Positive for upward, negative for downward movement."
-                                )
-                            ),
-                            "type" to "object"
-                        ),
-                        "rightStick" to mapOf(
-                            "description" to "Right stick controls the roll axis and pitch axis of the aircraft. " +
-                                    "Negative horizontalPosition makes the aircraft fly left, " +
-                                    "positive makes it fly right. " +
-                                    "Positive verticalPosition makes the aircraft fly forward, negative flies it backward.",
-                            "properties" to mapOf(
-                                "horizontalPosition" to mapOf(
-                                    "type" to "number",
-                                    "description" to "Negative for left, positive for right movement."
-                                ),
-                                "verticalPosition" to mapOf(
-                                    "type" to "number",
-                                    "description" to "Positive for forward, negative for backward movement."
-                                )
-                            ),
-                            "type" to "object"
-                        )
-                    )
-                )
-            )
+    val messages: MutableList<ChatMessage> = mutableListOf(
+        ChatSystemMessage(
+            "system",
+            SYSTEM_PROMPT,
         )
     )
 
@@ -218,7 +259,9 @@ object Agent {
     fun run(command: ChatUserMessage) {
         messages.add(command)
 
-        val gson = Gson()
+        val gson = GsonBuilder()
+            .registerTypeAdapter(Instruction::class.java, InstructionDeserializer())
+            .create()
 
         while (true) {
             if (VisionManager.image != null && StateManager.state != null) {
@@ -240,9 +283,10 @@ object Agent {
             val completionMessage = response.choices[0].message
             messages.add(completionMessage)
             if (completionMessage is ChatAssistantMessage) {
-                val toolCalls = completionMessage.tool_calls
-                if (toolCalls.isNullOrEmpty()) {
-                    return
+                val instructionJson = extractJson(completionMessage.content)
+                if (instructionJson != null) {
+                    val instruction = gson.fromJson(instructionJson, Instruction::class.java)
+                    FlightManager.execute(instruction)
                 }
             }
         }
@@ -250,9 +294,20 @@ object Agent {
 }
 
 
+fun extractJson(text: String): String? {
+    val left = text.indexOfFirst { it == '{' }
+    val right = text.indexOfLast { it == '}' }
+    if (left == -1 || right == -1) {
+        return null
+    }
+    return text.substring(left, right + 1)
+}
+
+
 @OptIn(ExperimentalEncodingApi::class)
 fun main() {
     val gson = Gson()
+
 
     val encoded = Base64.encode(
         java.io.File("/Users/maxwellconradt/Documents/sandzenPainting1.jpg").readBytes()
