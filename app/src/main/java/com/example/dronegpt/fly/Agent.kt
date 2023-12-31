@@ -19,6 +19,7 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
+import dji.sdk.keyvalue.key.CameraKey
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.ComponentIndexType
@@ -33,6 +34,8 @@ import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import dji.v5.manager.datacenter.camera.CameraStreamManager
 import dji.v5.manager.interfaces.ICameraStreamManager
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayOutputStream
 import java.lang.reflect.Type
 import java.nio.ByteBuffer
@@ -248,6 +251,14 @@ object VisionManager {
     var image: ByteArray? = null
 
     fun initialize() {
+
+        val isConnected = KeyTools.createKey(CameraKey.KeyConnection).get()
+
+        if (isConnected == true) {
+            println("Connected to camera")
+        } else {
+            println("Not connected to camera")
+        }
         // KeyTools.createKey(CameraKey.KeyPhotoFileFormatRange).set(
         //     mutableListOf(PhotoFileFormat.JPEG)
         // )
@@ -263,7 +274,7 @@ object VisionManager {
 
         val cStreamManager = CameraStreamManager.getInstance()
 
-        cStreamManager.addFrameListener(ComponentIndexType.FPV, ICameraStreamManager.FrameFormat.NV21
+        cStreamManager.addFrameListener(ComponentIndexType.LEFT_OR_MAIN, ICameraStreamManager.FrameFormat.NV21
         ) { frameData, offset, length, width, height, format ->
             val relevantData = frameData.copyOfRange(offset, offset + length)
             println("recv $length bytes $format data")
@@ -411,6 +422,8 @@ object Agent {
             .create()
 
         while (true) {
+            val targetLoopMs = 5000
+            val startTime = System.currentTimeMillis()
             val imageSnapshot = VisionManager.image
             if (imageSnapshot != null) {
                 val state = gson.toJson(StateManager.state)
@@ -426,7 +439,9 @@ object Agent {
                 val imageMessage = ChatImageMessage("user", contentParts)
                 messages.add(imageMessage)
             }
-            val request = ChatCompletionRequest(model, messages, 256)
+
+            // TODO: Filter messages in request
+            val request = ChatCompletionRequest(model, messages, 512)
             val response = ChatCompletionAPI.create(request)
             val completionMessage = response.choices[0].message
             messages.add(completionMessage)
@@ -435,7 +450,19 @@ object Agent {
                 if (instructionJson != null) {
                     val instruction = gson.fromJson(instructionJson, Instruction::class.java)
                     FlightManager.execute(instruction)
+                } else {
+                    return
                 }
+            }
+            val duration = System.currentTimeMillis() - startTime
+            println("Loop took $duration ms to run")
+            val residual = targetLoopMs - duration
+            if (residual > 0) {
+                runBlocking {
+                    delay(residual)
+                }
+            } else {
+                println("Loop took ${-residual} ms longer than expected")
             }
         }
     }

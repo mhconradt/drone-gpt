@@ -5,11 +5,14 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
+import android.view.SurfaceHolder
+import android.view.SurfaceView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -32,9 +36,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.compose.jetchat.theme.DroneGPTTheme
@@ -51,13 +58,53 @@ import dji.v5.manager.SDKManager
 import dji.v5.manager.aircraft.uas.AreaStrategy
 import dji.v5.manager.aircraft.uas.UASRemoteIDManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
+import dji.v5.manager.datacenter.camera.CameraStreamManager
 import dji.v5.manager.diagnostic.DeviceStatusManager
+import dji.v5.manager.interfaces.ICameraStreamManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import dji.v5.utils.common.LocationUtil.getLastLocation
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+data class Size(val width: Int, val height: Int)
+
+@Composable
+fun DroneCameraView(modifier: Modifier = Modifier) {
+    var surfaceSize by remember { mutableStateOf(Size(0, 0)) }
+    val context = LocalContext.current
+
+    AndroidView(
+        modifier = modifier,
+        factory = { ctx ->
+            SurfaceView(ctx).apply {
+                holder.addCallback(object : SurfaceHolder.Callback {
+                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                        surfaceSize = Size(width, height)
+                        // Now surfaceSize holds the width and height of the surface
+                    }
+
+                    override fun surfaceDestroyed(holder: SurfaceHolder) {}
+
+                    override fun surfaceCreated(holder: SurfaceHolder) {}
+                })
+            }
+        },
+        update = { surfaceView ->
+            // This is where you can update the SurfaceView if needed, based on state changes
+            // Pass the Surface to the DJI SDK here
+            val surface = surfaceView.holder.surface
+            // Example: droneCamera.startStream(surface)
+            val cameraStreamManager = CameraStreamManager.getInstance()
+            cameraStreamManager.addAvailableCameraUpdatedListener {
+                if (it.isNotEmpty()) {
+                    cameraStreamManager.putCameraStreamSurface(it[0], surface, surfaceSize.width, surfaceSize.height, ICameraStreamManager.ScaleType.CENTER_INSIDE)
+                }
+            }
+        }
+    )
+}
 
 
 class MainActivity : ComponentActivity() {
@@ -80,47 +127,54 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DroneGPTTheme {
-                Surface(modifier = Modifier.fillMaxSize()) {
-                    Column {
-                        ConversationHistory(Agent.getChatMessages())
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.BottomStart // Aligns children to the bottom start (bottom left)
+                ) {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        Column {
+                            ConversationHistory(Agent.getChatMessages())
 
-                        var text by remember { mutableStateOf("Take off") }
-                        TextField(
-                            value = text,
-                            onValueChange = { text = it },
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(16.dp),
-                            trailingIcon = {
-                                Button(
-                                    onClick = {
-                                        println(text)
-                                        Log.i(TAG, "Launching coroutine...")
-                                        // Launching a coroutine
-                                        CoroutineScope(Dispatchers.IO).launch {
-                                            Log.i(TAG, "Launched coroutine...")
-                                            try {
-                                                Agent.run(ChatUserMessage("user", text))
-                                                // Switch back to the Main thread for UI operations
-                                                withContext(Dispatchers.Main) {
-                                                    text = "Type a message"
+                            var text by remember { mutableStateOf("Take off") }
+                            TextField(
+                                value = text,
+                                onValueChange = { text = it },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp),
+                                trailingIcon = {
+                                    Button(
+                                        onClick = {
+                                            println(text)
+                                            Log.i(TAG, "Launching coroutine...")
+                                            // Launching a coroutine
+                                            CoroutineScope(Dispatchers.IO).launch {
+                                                Log.i(TAG, "Launched coroutine...")
+                                                try {
+                                                    Agent.run(ChatUserMessage("user", text))
+                                                    // Switch back to the Main thread for UI operations
+                                                    withContext(Dispatchers.Main) {
+                                                        text = "Type a message"
+                                                    }
+                                                } catch (e: Exception) {
+                                                    Log.e(TAG, e.stackTraceToString())
+                                                    TODO("Not yet implemented")
                                                 }
-                                            } catch (e: Exception) {
-                                                Log.e(TAG, e.stackTraceToString())
-                                                TODO("Not yet implemented")
                                             }
                                         }
+                                    ) {
+                                        Icon(
+                                            Icons.Rounded.Send,
+                                            contentDescription = "Send"
+                                        )
                                     }
-                                ) {
-                                    Icon(
-                                        Icons.Rounded.Send,
-                                        contentDescription = "Send"
-                                    )
                                 }
-                            }
-                        )
+                            )
+                        }
                     }
-
+                    DroneCameraView(
+                        modifier = Modifier.padding(16.dp).size(200.dp, 150.dp)
+                    )
                 }
             }
         }
