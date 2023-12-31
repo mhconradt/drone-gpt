@@ -1,5 +1,9 @@
 package com.example.dronegpt.fly
 
+import android.graphics.Bitmap
+import android.graphics.ImageFormat
+import android.graphics.Rect
+import android.graphics.YuvImage
 import com.example.dronegpt.chat.ChatAssistantMessage
 import com.example.dronegpt.chat.ChatCompletionAPI
 import com.example.dronegpt.chat.ChatCompletionRequest
@@ -7,7 +11,6 @@ import com.example.dronegpt.chat.ChatImageMessage
 import com.example.dronegpt.chat.ChatMessage
 import com.example.dronegpt.chat.ChatSystemMessage
 import com.example.dronegpt.chat.ChatUserMessage
-import com.example.dronegpt.chat.ContentPart
 import com.example.dronegpt.chat.ImageUrlContentPart
 import com.example.dronegpt.chat.RawImageUrl
 import com.example.dronegpt.chat.TextContentPart
@@ -18,6 +21,7 @@ import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.EmptyMsg
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
@@ -25,7 +29,11 @@ import dji.v5.et.get
 import dji.v5.et.listen
 import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
+import dji.v5.manager.datacenter.camera.CameraStreamManager
+import dji.v5.manager.interfaces.ICameraStreamManager
+import java.io.ByteArrayOutputStream
 import java.lang.reflect.Type
+import java.nio.ByteBuffer
 import kotlin.io.encoding.Base64
 import kotlin.io.encoding.ExperimentalEncodingApi
 
@@ -182,6 +190,7 @@ object StateManager {
                 state.longitude = it.longitude
                 state.latitude = it.latitude
                 state.altitude = it.altitude
+                println(state)
             }
         }
 
@@ -193,6 +202,7 @@ object StateManager {
                 state.xVelocity = it.x
                 state.yVelocity = it.y
                 state.zVelocity = it.z
+                println(state)
             }
         }
 
@@ -202,6 +212,7 @@ object StateManager {
         ) {
             if (it != null) {
                 state.compassHeading = it
+                println(state)
             }
         }
 
@@ -209,8 +220,30 @@ object StateManager {
     }
 }
 
+fun convertNV21ToJpeg(nv21ImageData: ByteArray, width: Int, height: Int): ByteArray {
+    val yuvImage = YuvImage(nv21ImageData, ImageFormat.NV21, width, height, null)
+    val outputStream = ByteArrayOutputStream()
+    yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, outputStream)
+    return outputStream.toByteArray()
+}
+
+fun convertRGBA8888ToJpeg(rgbaData: ByteArray, width: Int, height: Int): ByteArray {
+    // Create a Bitmap from the RGBA byte array
+    val buffer = ByteBuffer.wrap(rgbaData)
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    bitmap.copyPixelsFromBuffer(buffer)
+
+    // Compress the Bitmap to JPEG
+    val outputStream = ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.JPEG, 100, outputStream)
+    bitmap.recycle()  // Recycle the bitmap to free memory
+
+    // Return the JPEG byte array
+    return outputStream.toByteArray()
+}
+
 object VisionManager {
-    val image: ByteArray? = null
+    var image: ByteArray? = null
 
     fun initialize() {
         // KeyTools.createKey(CameraKey.KeyPhotoFileFormatRange).set(
@@ -226,7 +259,27 @@ object VisionManager {
         //     )
         // )
 
+        val cStreamManager = CameraStreamManager.getInstance()
 
+        cStreamManager.addFrameListener(ComponentIndexType.FPV, ICameraStreamManager.FrameFormat.NV21
+        ) { frameData, offset, length, width, height, format ->
+            val relevantData = frameData.copyOfRange(offset, offset + length)
+            println("recv $length bytes $format data")
+
+            image = when (format) {
+                ICameraStreamManager.FrameFormat.RGBA_8888 -> {
+                    convertRGBA8888ToJpeg(relevantData, width, height)
+                }
+
+                ICameraStreamManager.FrameFormat.NV21 -> {
+                    convertNV21ToJpeg(relevantData, width, height)
+                }
+
+                else -> {
+                    throw java.lang.IllegalStateException(format.toString())
+                }
+            }
+        }
     }
 }
 
@@ -349,13 +402,14 @@ object Agent {
             .create()
 
         while (true) {
-            if (VisionManager.image != null && StateManager.state != null) {
+            val imageSnapshot = VisionManager.image
+            if (imageSnapshot != null) {
                 val state = gson.toJson(StateManager.state)
-                val contentParts = listOf<ContentPart>(
+                val contentParts = listOf(
                     TextContentPart("text", state),
                     ImageUrlContentPart(
                         "image_url", RawImageUrl(
-                            "data:image/jpeg;base64,${Base64.encode(VisionManager.image)}",
+                            "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
                             "An image captured from the drone's camera."
                         )
                     )

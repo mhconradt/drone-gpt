@@ -43,6 +43,8 @@ import com.example.dronegpt.chat.ChatManager
 import com.example.dronegpt.chat.ChatMessage
 import com.example.dronegpt.chat.ChatSystemMessage
 import com.example.dronegpt.chat.ChatUserMessage
+import com.example.dronegpt.fly.StateManager
+import com.example.dronegpt.fly.VisionManager
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.key.RemoteControllerKey
@@ -331,6 +333,9 @@ class MainActivity : ComponentActivity() {
                     }
                 )
                 Log.i(TAG, "Called enableVirtualStick()")
+
+                VisionManager.initialize()
+                StateManager.initialize()
             }
 
             override fun onProductDisconnect(productId: Int) {
