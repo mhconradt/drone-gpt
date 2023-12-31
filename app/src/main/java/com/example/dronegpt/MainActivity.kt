@@ -53,8 +53,6 @@ import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.manager.KeyManager
 import dji.v5.manager.SDKManager
-import dji.v5.manager.aircraft.perception.PerceptionManager
-import dji.v5.manager.aircraft.perception.data.ObstacleAvoidanceType
 import dji.v5.manager.aircraft.uas.AreaStrategy
 import dji.v5.manager.aircraft.uas.UASRemoteIDManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
@@ -321,35 +319,18 @@ class MainActivity : ComponentActivity() {
                     Log.e(TAG, "setUASRemoteIDAreaStrategy error: $error")
                 }
 
-                val obstacleAvoidanceType = PerceptionManager.getInstance().getObstacleAvoidanceType(
-                    object: CompletionCallbackWithParam<ObstacleAvoidanceType> {
-                        override fun onSuccess(t: ObstacleAvoidanceType?) {
-                            Log.i(TAG, "Got obstacle avoidance type $t")
+                VirtualStickManager.getInstance().enableVirtualStick(
+                    object : CompletionCallback {
+                        override fun onSuccess() {
+                            Log.i(TAG, "enableVirtualStick() succeeded")
                         }
 
                         override fun onFailure(error: IDJIError) {
-                            Log.e(TAG, "getObstacleAvoidanceType failed: $error")
+                            Log.e(TAG, "enableVirtualStick() failed: $error")
                         }
-
                     }
                 )
-
-                if (false) {
-                    VirtualStickManager.getInstance().enableVirtualStick(
-                        object : CompletionCallback {
-                            override fun onSuccess() {
-                                Log.i(TAG, "enableVirtualStick() succeeded")
-                                val stickManager = VirtualStickManager.getInstance()
-                                stickManager.leftStick.verticalPosition = 1
-                            }
-
-                            override fun onFailure(error: IDJIError) {
-                                Log.e(TAG, "enableVirtualStick() failed: $error")
-                            }
-                        }
-                    )
-                    Log.i(TAG, "Called enableVirtualStick()")
-                }
+                Log.i(TAG, "Called enableVirtualStick()")
             }
 
             override fun onProductDisconnect(productId: Int) {
