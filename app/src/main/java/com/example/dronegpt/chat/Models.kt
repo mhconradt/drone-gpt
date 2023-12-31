@@ -17,7 +17,7 @@ data class ToolCall(val id: String, val type: String, val function: FunctionCall
 sealed class ChatMessage
 
 // No difference here
-data class ChatSystemMessage(val role: String, val content: String) : ChatMessage()
+data class ChatSystemMessage(val role: String, val content: String): ChatMessage()
 
 // No difference here either
 data class ChatUserMessage(val role: String, val content: String) : ChatMessage()

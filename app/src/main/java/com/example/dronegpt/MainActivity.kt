@@ -39,26 +39,18 @@ import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.compose.jetchat.theme.DroneGPTTheme
 import com.example.dronegpt.chat.ChatAssistantMessage
-import com.example.dronegpt.chat.ChatManager
 import com.example.dronegpt.chat.ChatMessage
-import com.example.dronegpt.chat.ChatSystemMessage
 import com.example.dronegpt.chat.ChatUserMessage
+import com.example.dronegpt.fly.Agent
 import com.example.dronegpt.fly.StateManager
 import com.example.dronegpt.fly.VisionManager
-import dji.sdk.keyvalue.key.FlightControllerKey
-import dji.sdk.keyvalue.key.KeyTools
-import dji.sdk.keyvalue.key.RemoteControllerKey
-import dji.sdk.keyvalue.value.common.EmptyMsg
 import dji.v5.common.callback.CommonCallbacks.CompletionCallback
-import dji.v5.common.callback.CommonCallbacks.CompletionCallbackWithParam
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
-import dji.v5.manager.KeyManager
 import dji.v5.manager.SDKManager
 import dji.v5.manager.aircraft.uas.AreaStrategy
 import dji.v5.manager.aircraft.uas.UASRemoteIDManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
-import dji.v5.manager.diagnostic.DeviceHealthManager
 import dji.v5.manager.diagnostic.DeviceStatusManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import dji.v5.utils.common.LocationUtil.getLastLocation
@@ -86,21 +78,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val manager = ChatManager(
-            messages = mutableListOf(
-                ChatSystemMessage(
-                    "system",
-                    "You're a helpful assistant in charge of flying a drone on behalf of the " +
-                            "user."
-                )
-            )
-        )
-
         setContent {
             DroneGPTTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Column {
-                        ConversationHistory(manager.getChatMessages())
+                        ConversationHistory(Agent.getChatMessages())
 
                         var text by remember { mutableStateOf("Take off") }
                         TextField(
@@ -118,138 +100,10 @@ class MainActivity : ComponentActivity() {
                                         CoroutineScope(Dispatchers.IO).launch {
                                             Log.i(TAG, "Launched coroutine...")
                                             try {
-                                                if (text === "Take off") {
-                                                    Log.i(TAG, "Attempting takeoff")
-                                                    for (info in DeviceHealthManager.getInstance().currentDJIDeviceHealthInfos) {
-                                                        Log.i(TAG, "Info: ${info.warningLevel()} ${info.title()} ${info.description()} ${info.informationCode()}")
-                                                    }
-
-                                                    val motorsOn =
-                                                        KeyManager.getInstance().getValue(
-                                                            KeyTools.createKey(FlightControllerKey.KeyAreMotorsOn)
-                                                        )
-
-                                                    Log.i(TAG, "Are motors on? $motorsOn")
-
-                                                    val signalLevel =
-                                                        KeyManager.getInstance().getValue(
-                                                            KeyTools.createKey(FlightControllerKey.KeyGPSSignalLevel)
-                                                        )
-
-                                                    Log.i(TAG, "Signal Level: $signalLevel")
-
-                                                    val connected =
-                                                        KeyManager.getInstance().getValue(
-                                                            KeyTools.createKey(FlightControllerKey.KeyConnection)
-                                                        )
-
-                                                    Log.i(TAG, "Connected? $connected")
-
-                                                    val flightMode =
-                                                        KeyManager.getInstance().getValue(
-                                                            KeyTools.createKey(FlightControllerKey.KeyRemoteControllerFlightMode)
-                                                        )
-
-                                                    Log.i(TAG, "Flight Mode: $flightMode")
-
-                                                    val rcConnected =
-                                                        KeyManager.getInstance().getValue(
-                                                            KeyTools.createKey(RemoteControllerKey.KeyConnection)
-                                                        )
-
-                                                    Log.i(TAG, "RC Connected? $rcConnected")
-
-                                                    val location =
-                                                        KeyManager.getInstance().getValue(
-                                                            KeyTools.createKey(FlightControllerKey.KeyAircraftLocation)
-                                                        )
-
-                                                    Log.i(TAG, "Location $location")
-
-                                                    KeyManager.getInstance().setValue(
-                                                        KeyTools.createKey(
-                                                            FlightControllerKey.KeyHomeLocation,
-                                                        ),
-                                                        location,
-                                                        object :
-                                                            CompletionCallback {
-                                                            override fun onSuccess() {
-                                                                Log.i(TAG, "Set home location")
-
-                                                                Log.i(TAG, "ATTEMPTING TAKEOFF")
-
-                                                                KeyManager.getInstance()
-                                                                    .performAction(
-                                                                        KeyTools.createKey(
-                                                                            FlightControllerKey.KeyStartTakeoff
-                                                                        ),
-                                                                        object :
-                                                                            CompletionCallbackWithParam<EmptyMsg> {
-                                                                            override fun onSuccess(
-                                                                                nil: EmptyMsg
-                                                                            ) {
-                                                                                Log.i(
-                                                                                    TAG,
-                                                                                    "Taking off"
-                                                                                )
-                                                                            }
-
-                                                                            override fun onFailure(
-                                                                                error: IDJIError
-                                                                            ) {
-                                                                                Log.e(
-                                                                                    TAG,
-                                                                                    "Takeoff failed $error"
-                                                                                )
-
-                                                                                // val path = FlightLogManager.getInstance().flyClogPath
-                                                                                // val file = File(path)
-                                                                                // Log.i(TAG, "Log file: ${file.readText()}")
-                                                                            }
-                                                                        }
-                                                                    )
-                                                            }
-
-                                                            override fun onFailure(error: IDJIError) {
-                                                                Log.e(
-                                                                    TAG,
-                                                                    "Set home location failed $error"
-                                                                )
-                                                            }
-                                                        }
-                                                    )
-
-                                                    Log.i(TAG, "Setting home location")
-
-                                                    val serialNumber =
-                                                        KeyManager.getInstance().getValue(
-                                                            KeyTools.createKey(FlightControllerKey.KeySerialNumber)
-                                                        )
-
-                                                    Log.i(TAG, "Serial number $serialNumber")
-                                                }
-
-                                                if (text.lowercase().contains("land")) {
-                                                    Log.i(TAG, "Attempting landing")
-                                                    KeyManager.getInstance().performAction(
-                                                        KeyTools.createKey(FlightControllerKey.KeyStartAutoLanding),
-                                                        object :
-                                                            CompletionCallbackWithParam<EmptyMsg> {
-                                                            override fun onSuccess(nil: EmptyMsg) {
-                                                                Log.i(TAG, "Landing...")
-                                                            }
-
-                                                            override fun onFailure(error: IDJIError) {
-                                                                Log.e(TAG, "Landing failed $error")
-                                                            }
-                                                        }
-                                                    )
-                                                }
-
-                                                manager.add(ChatUserMessage("user", text))
+                                                Agent.run(ChatUserMessage("user", text))
                                                 // Switch back to the Main thread for UI operations
                                                 withContext(Dispatchers.Main) {
-                                                    text = "Take off"
+                                                    text = "Type a message"
                                                 }
                                             } catch (e: Exception) {
                                                 Log.e(TAG, e.stackTraceToString())

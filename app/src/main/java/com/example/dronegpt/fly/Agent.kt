@@ -23,10 +23,12 @@ import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.ComponentIndexType
 import dji.sdk.keyvalue.value.common.EmptyMsg
+import dji.sdk.keyvalue.value.common.LocationCoordinate2D
 import dji.v5.common.callback.CommonCallbacks
 import dji.v5.common.error.IDJIError
 import dji.v5.et.get
 import dji.v5.et.listen
+import dji.v5.et.set
 import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import dji.v5.manager.datacenter.camera.CameraStreamManager
@@ -287,6 +289,9 @@ object FlightManager {
     fun execute(instruction: Instruction) {
         when (instruction) {
             is TakeOff -> {
+                KeyTools.createKey(
+                    FlightControllerKey.KeyHomeLocation,
+                ).set(LocationCoordinate2D(StateManager.state.longitude, StateManager.state.latitude))
                 KeyManager.getInstance()
                     .performAction(
                         KeyTools.createKey(
@@ -392,6 +397,10 @@ object Agent {
             SYSTEM_PROMPT,
         )
     )
+
+    fun getChatMessages(): List<ChatMessage> {
+        return messages.filter { (it is ChatUserMessage || it is ChatAssistantMessage) }
+    }
 
     @OptIn(ExperimentalEncodingApi::class)
     fun run(command: ChatUserMessage) {
