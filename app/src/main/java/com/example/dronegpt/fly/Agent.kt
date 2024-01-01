@@ -384,7 +384,8 @@ sealed class Instruction
 data class TakeOff(val type: String) : Instruction()
 data class Land(val type: String) : Instruction()
 
-data class Control(val type: String, val leftStick: StickPosition, val rightStick: StickPosition) : Instruction()
+data class Control(val type: String, val leftStick: StickPosition, val rightStick: StickPosition) :
+    Instruction()
 
 class InstructionDeserializer : JsonDeserializer<Instruction> {
     override fun deserialize(
@@ -446,7 +447,7 @@ object Agent {
                     )
                 )
             }
-            val imageMessage = ChatImageMessage("user", contentParts)
+            val imageMessage = ChatImageMessage("system", contentParts)
             messages.add(imageMessage)
             println(imageMessage)
 
