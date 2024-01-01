@@ -51,13 +51,20 @@ import com.example.dronegpt.chat.ChatUserMessage
 import com.example.dronegpt.fly.Agent
 import com.example.dronegpt.fly.StateManager
 import com.example.dronegpt.fly.VisionManager
+import dji.sdk.keyvalue.key.FlightControllerKey
+import dji.sdk.keyvalue.key.KeyTools
+import dji.sdk.keyvalue.key.RemoteControllerKey
+import dji.sdk.keyvalue.value.flightcontroller.FlightControlAuthorityChangeReason
 import dji.v5.common.callback.CommonCallbacks.CompletionCallback
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
+import dji.v5.et.get
 import dji.v5.manager.SDKManager
 import dji.v5.manager.aircraft.uas.AreaStrategy
 import dji.v5.manager.aircraft.uas.UASRemoteIDManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
+import dji.v5.manager.aircraft.virtualstick.VirtualStickState
+import dji.v5.manager.aircraft.virtualstick.VirtualStickStateListener
 import dji.v5.manager.datacenter.camera.CameraStreamManager
 import dji.v5.manager.diagnostic.DeviceStatusManager
 import dji.v5.manager.interfaces.ICameraStreamManager
@@ -229,7 +236,28 @@ class MainActivity : ComponentActivity() {
                     Log.e(TAG, "setUASRemoteIDAreaStrategy error: $error")
                 }
 
-                VirtualStickManager.getInstance().enableVirtualStick(
+                val stickManager = VirtualStickManager.getInstance()
+
+                stickManager.setVirtualStickStateListener(
+                    object : VirtualStickStateListener {
+                        override fun onVirtualStickStateUpdate(stickState: VirtualStickState) {
+                            println("onVirtualStickStateUpdate ${stickState.isVirtualStickEnable} ${stickState.isVirtualStickAdvancedModeEnabled}")
+                        }
+
+                        override fun onChangeReasonUpdate(reason: FlightControlAuthorityChangeReason) {
+                            println("onChangeReasonUpdate $reason")
+                        }
+
+                    }
+                )
+
+                val rcConnected = KeyTools.createKey(RemoteControllerKey.KeyConnection).get()
+                val rcFlightMode = KeyTools.createKey(FlightControllerKey.KeyRemoteControllerFlightMode).get()
+                val flightMode = KeyTools.createKey(FlightControllerKey.KeyFlightMode).get()
+                val multiControl = KeyTools.createKey(RemoteControllerKey.KeyMultiControlIsSupported).get()
+                println("virtualStick $multiControl $rcConnected $rcFlightMode $flightMode")
+
+                stickManager.enableVirtualStick(
                     object : CompletionCallback {
                         override fun onSuccess() {
                             Log.i(TAG, "enableVirtualStick() succeeded")

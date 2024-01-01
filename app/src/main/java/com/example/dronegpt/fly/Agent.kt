@@ -11,9 +11,11 @@ import com.example.dronegpt.chat.ChatImageMessage
 import com.example.dronegpt.chat.ChatMessage
 import com.example.dronegpt.chat.ChatSystemMessage
 import com.example.dronegpt.chat.ChatUserMessage
+import com.example.dronegpt.chat.ContentPart
 import com.example.dronegpt.chat.ImageUrlContentPart
 import com.example.dronegpt.chat.RawImageUrl
 import com.example.dronegpt.chat.TextContentPart
+import com.example.dronegpt.chat.isControl
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonDeserializationContext
@@ -130,8 +132,8 @@ data class StickPosition(
 )
 
 data class Controls(
-    val leftStick: StickPosition,
-    val rightStick: StickPosition,
+    var leftStick: StickPosition,
+    var rightStick: StickPosition,
 )
 
 data class State(
@@ -274,7 +276,8 @@ object VisionManager {
 
         val cStreamManager = CameraStreamManager.getInstance()
 
-        cStreamManager.addFrameListener(ComponentIndexType.LEFT_OR_MAIN, ICameraStreamManager.FrameFormat.NV21
+        cStreamManager.addFrameListener(
+            ComponentIndexType.LEFT_OR_MAIN, ICameraStreamManager.FrameFormat.NV21
         ) { frameData, offset, length, width, height, format ->
             val relevantData = frameData.copyOfRange(offset, offset + length)
             image = when (format) {
@@ -300,7 +303,12 @@ object FlightManager {
             is TakeOff -> {
                 KeyTools.createKey(
                     FlightControllerKey.KeyHomeLocation,
-                ).set(LocationCoordinate2D(StateManager.state.longitude, StateManager.state.latitude))
+                ).set(
+                    LocationCoordinate2D(
+                        StateManager.state.longitude,
+                        StateManager.state.latitude
+                    )
+                )
                 KeyManager.getInstance()
                     .performAction(
                         KeyTools.createKey(
@@ -330,14 +338,15 @@ object FlightManager {
             is Control -> {
                 val stickManager = VirtualStickManager.getInstance()
                 stickManager.leftStick.verticalPosition =
-                    instruction.controls.leftStick.verticalPosition
+                    instruction.leftStick.verticalPosition
                 stickManager.leftStick.horizontalPosition =
-                    instruction.controls.leftStick.horizontalPosition
+                    instruction.leftStick.horizontalPosition
                 stickManager.rightStick.verticalPosition =
-                    instruction.controls.rightStick.verticalPosition
+                    instruction.rightStick.verticalPosition
                 stickManager.rightStick.horizontalPosition =
-                    instruction.controls.rightStick.horizontalPosition
-                StateManager.state.sticks = instruction.controls
+                    instruction.rightStick.horizontalPosition
+                StateManager.state.sticks?.leftStick = instruction.leftStick
+                StateManager.state.sticks?.rightStick = instruction.rightStick
             }
 
             is Land -> {
@@ -375,7 +384,7 @@ sealed class Instruction
 data class TakeOff(val type: String) : Instruction()
 data class Land(val type: String) : Instruction()
 
-data class Control(val type: String, val controls: Controls) : Instruction()
+data class Control(val type: String, val leftStick: StickPosition, val rightStick: StickPosition) : Instruction()
 
 class InstructionDeserializer : JsonDeserializer<Instruction> {
     override fun deserialize(
@@ -394,7 +403,6 @@ class InstructionDeserializer : JsonDeserializer<Instruction> {
             }
         }
     }
-
 }
 
 
@@ -408,12 +416,13 @@ object Agent {
     )
 
     fun getChatMessages(): List<ChatMessage> {
-        return messages.filter { (it is ChatUserMessage || it is ChatAssistantMessage) }
+        return messages.filter { it is ChatUserMessage || (it is ChatAssistantMessage && !it.isControl()) }
     }
 
     @OptIn(ExperimentalEncodingApi::class)
     fun run(command: ChatUserMessage) {
         messages.add(command)
+        println(command)
 
         val gson = GsonBuilder()
             .registerTypeAdapter(Instruction::class.java, InstructionDeserializer())
@@ -423,10 +432,12 @@ object Agent {
             val targetLoopMs = 5000
             val startTime = System.currentTimeMillis()
             val imageSnapshot = VisionManager.image
+            val state = gson.toJson(StateManager.state)
+            val contentParts = mutableListOf<ContentPart>(
+                TextContentPart("text", state)
+            )
             if (imageSnapshot != null) {
-                val state = gson.toJson(StateManager.state)
-                val contentParts = listOf(
-                    TextContentPart("text", state),
+                contentParts.add(
                     ImageUrlContentPart(
                         "image_url", RawImageUrl(
                             "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
@@ -434,19 +445,23 @@ object Agent {
                         )
                     )
                 )
-                val imageMessage = ChatImageMessage("user", contentParts)
-                messages.add(imageMessage)
             }
+            val imageMessage = ChatImageMessage("user", contentParts)
+            messages.add(imageMessage)
+            println(imageMessage)
 
-            // TODO: Filter messages in request
-            val request = ChatCompletionRequest(model, messages, 512)
+            val filteredMessages = getAgentMessages()
+            val request = ChatCompletionRequest(model, filteredMessages, 512)
+            println(request)
             val response = ChatCompletionAPI.create(request)
             val completionMessage = response.choices[0].message
             messages.add(completionMessage)
+            println(completionMessage)
             if (completionMessage is ChatAssistantMessage) {
                 val instructionJson = extractJson(completionMessage.content)
                 if (instructionJson != null) {
                     val instruction = gson.fromJson(instructionJson, Instruction::class.java)
+                    println("Got instruction $instruction")
                     FlightManager.execute(instruction)
                 } else {
                     return
@@ -463,6 +478,41 @@ object Agent {
                 println("Loop took ${-residual} ms longer than expected")
             }
         }
+    }
+
+    private fun getAgentMessages(): List<ChatMessage> {
+        /*
+            Types of messages:
+
+            SYSTEM PROMPT
+
+            USER MESSAGE
+            [
+            SYSTEM MESSAGE: STATE
+            SYSTEM MESSAGE: IMAGE (BASE64)
+            TOOL CALL
+            ]+
+            SYSTEM MESSAGE: STATE
+            SYSTEM MESSAGE: IMAGE (BASE64)
+            ASSISTANT MESSAGE
+        */
+        // System message
+        // All user + non-control assistant messages
+        val lastUserMessage = messages.indexOfLast { it is ChatUserMessage }
+        val anchorImageMessage = lastUserMessage + 1
+
+        val filtered = mutableListOf(
+            messages[0],
+            messages[lastUserMessage],
+            messages[anchorImageMessage]
+        )
+        if (anchorImageMessage != messages.size - 1) {
+            // First assistant response
+            filtered.add(messages[anchorImageMessage + 1])
+            // Most recent image message
+            filtered.add(messages[messages.size - 1])
+        }
+        return messages
     }
 }
 

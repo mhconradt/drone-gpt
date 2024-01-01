@@ -30,6 +30,10 @@ data class ChatAssistantMessage(
     val tool_calls: List<ToolCall>? = null
 ) : ChatMessage()
 
+fun ChatAssistantMessage.isControl(): Boolean {
+    return content.contains("{")
+}
+
 data class ChatToolMessage(val role: String, val content: String, val tool_call_id: String) :
     ChatMessage()
 
@@ -42,21 +46,7 @@ data class Function(
 data class Tool(val type: String = "function", val function: Function)
 
 
-/*
-Types of messages:
 
-SYSTEM PROMPT
-
-USER MESSAGE
-[
-SYSTEM MESSAGE: STATE
-SYSTEM MESSAGE: IMAGE (BASE64)
-TOOL CALL
-]+
-SYSTEM MESSAGE: STATE
-SYSTEM MESSAGE: IMAGE (BASE64)
-ASSISTANT MESSAGE
- */
 
 
 class ChatMessageDeserializer : JsonDeserializer<ChatMessage> {
