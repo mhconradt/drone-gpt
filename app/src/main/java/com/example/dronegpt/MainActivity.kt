@@ -72,10 +72,6 @@ import dji.v5.manager.diagnostic.DeviceStatusManager
 import dji.v5.manager.interfaces.ICameraStreamManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import dji.v5.utils.common.LocationUtil.getLastLocation
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 data class Size(val width: Int, val height: Int)
 
@@ -129,7 +125,6 @@ fun DroneCameraView(modifier: Modifier = Modifier) {
 @Composable
 fun ChatScreen(viewModel: Agent) {
     val messages by viewModel.chatMessages.observeAsState(initial = emptyList())
-
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
@@ -161,18 +156,14 @@ fun ChatScreen(viewModel: Agent) {
                             onClick = {
                                 Log.i("ChatScreen", "Launching coroutine...")
                                 // Launching a coroutine
-                                CoroutineScope(Dispatchers.IO).launch {
-                                    Log.i("ChatScreen", "Launched coroutine...")
-                                    try {
-                                        viewModel.run(ChatUserMessage("user", text))
-                                        // Switch back to the Main thread for UI operations
-                                        withContext(Dispatchers.Main) {
-                                            text = ""
-                                        }
-                                    } catch (e: Exception) {
-                                        Log.e("ChatScreen", e.stackTraceToString())
-                                        TODO("Not yet implemented")
-                                    }
+                                Log.i("ChatScreen", "Launched coroutine...")
+                                try {
+                                    viewModel.run(ChatUserMessage("user", text))
+                                    // Switch back to the Main thread for UI operations
+                                    text = ""
+                                } catch (e: Exception) {
+                                    Log.e("ChatScreen", e.stackTraceToString())
+                                    TODO("Not yet implemented")
                                 }
                             }
                         ) {
@@ -230,7 +221,6 @@ class MainActivity : ComponentActivity() {
         registerApp()
         checkLocationPermission()
     }
-
 
 
     private fun registerApp() {

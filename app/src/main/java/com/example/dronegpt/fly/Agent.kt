@@ -6,6 +6,7 @@ import android.graphics.Rect
 import android.graphics.YuvImage
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.example.dronegpt.chat.ChatAssistantMessage
 import com.example.dronegpt.chat.ChatCompletionAPI
 import com.example.dronegpt.chat.ChatCompletionRequest
@@ -37,9 +38,10 @@ import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import dji.v5.manager.datacenter.camera.CameraStreamManager
 import dji.v5.manager.interfaces.ICameraStreamManager
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
@@ -390,7 +392,7 @@ class InstructionDeserializer : JsonDeserializer<Instruction> {
 }
 
 
-class Agent: ViewModel() {
+class Agent : ViewModel() {
     val model: String = "gpt-4-vision-preview"
     val messages: MutableList<ChatMessage> = mutableListOf(
         ChatSystemMessage(
@@ -405,79 +407,73 @@ class Agent: ViewModel() {
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    suspend fun run(command: ChatUserMessage) {
-        messages.add(command)
-        coroutineScope{
-            withContext(Dispatchers.Main) {
-                chatMessages.value = messages
-            }
-        }
-        println(command)
+    fun run(command: ChatUserMessage) {
+        viewModelScope.launch {
+            CoroutineScope(Dispatchers.IO).launch {
+                messages.add(command)
+                withContext(Dispatchers.Main){ chatMessages.value = messages }
+                println(command)
 
-        val gson = GsonBuilder()
-            .registerTypeAdapter(Instruction::class.java, InstructionDeserializer())
-            .create()
+                val gson = GsonBuilder()
+                    .registerTypeAdapter(Instruction::class.java, InstructionDeserializer())
+                    .create()
 
-        while (true) {
-            val targetLoopMs = 5000
-            val startTime = System.currentTimeMillis()
-            val imageSnapshot = VisionManager.image
-            val state = gson.toJson(StateManager.state)
-            val contentParts = mutableListOf<ContentPart>(
-                TextContentPart("text", state)
-            )
-            if (imageSnapshot != null) {
-                contentParts.add(
-                    ImageUrlContentPart(
-                        "image_url", RawImageUrl(
-                            "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
-                            "An image captured from the drone's camera."
-                        )
+                while (true) {
+                    val targetLoopMs = 5000
+                    val startTime = System.currentTimeMillis()
+                    val imageSnapshot = VisionManager.image
+                    val state = gson.toJson(StateManager.state)
+                    val contentParts = mutableListOf<ContentPart>(
+                        TextContentPart("text", state)
                     )
-                )
-            }
-            val imageMessage = ChatImageMessage("system", contentParts)
-            messages.add(imageMessage)
-            coroutineScope{
-                withContext(Dispatchers.Main) {
-                    chatMessages.value = messages
-                }
-            }
-            println(imageMessage)
+                    if (imageSnapshot != null) {
+                        contentParts.add(
+                            ImageUrlContentPart(
+                                "image_url", RawImageUrl(
+                                    "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
+                                    "An image captured from the drone's camera."
+                                )
+                            )
+                        )
+                    }
+                    val imageMessage = ChatImageMessage("system", contentParts)
+                    messages.add(imageMessage)
+                    withContext(Dispatchers.Main){ chatMessages.value = messages }
+                    println(imageMessage)
 
-            val filteredMessages = getAgentMessages()
-            val request = ChatCompletionRequest(model, filteredMessages, 512)
-            println(request)
-            val response = ChatCompletionAPI.create(request)
-            val completionMessage = response.choices[0].message
-            messages.add(completionMessage)
-            coroutineScope{
-                withContext(Dispatchers.Main) {
-                    chatMessages.value = messages
+                    val filteredMessages = getAgentMessages()
+                    val request = ChatCompletionRequest(model, filteredMessages, 512)
+                    println(request)
+                    val response = ChatCompletionAPI.create(request)
+                    val completionMessage = response.choices[0].message
+                    messages.add(completionMessage)
+                    withContext(Dispatchers.Main){ chatMessages.value = messages }
+                    println(completionMessage)
+                    if (completionMessage is ChatAssistantMessage) {
+                        val instructionJson = extractJson(completionMessage.content)
+                        if (instructionJson != null) {
+                            val instruction =
+                                gson.fromJson(instructionJson, Instruction::class.java)
+                            println("Got instruction $instruction")
+                            FlightManager.execute(instruction)
+                        } else {
+                            val nullInstruction =
+                                Control("control", StickPosition(0, 0), StickPosition(0, 0))
+                            FlightManager.execute(nullInstruction)
+                            break
+                        }
+                    }
+                    val duration = System.currentTimeMillis() - startTime
+                    println("Loop took $duration ms to run")
+                    val residual = targetLoopMs - duration
+                    if (residual > 0) {
+                        runBlocking {
+                            delay(residual)
+                        }
+                    } else {
+                        println("Loop took ${-residual} ms longer than expected")
+                    }
                 }
-            }
-            println(completionMessage)
-            if (completionMessage is ChatAssistantMessage) {
-                val instructionJson = extractJson(completionMessage.content)
-                if (instructionJson != null) {
-                    val instruction = gson.fromJson(instructionJson, Instruction::class.java)
-                    println("Got instruction $instruction")
-                    FlightManager.execute(instruction)
-                } else {
-                    val nullInstruction = Control("control", StickPosition(0, 0), StickPosition(0, 0))
-                    FlightManager.execute(nullInstruction)
-                    return
-                }
-            }
-            val duration = System.currentTimeMillis() - startTime
-            println("Loop took $duration ms to run")
-            val residual = targetLoopMs - duration
-            if (residual > 0) {
-                runBlocking {
-                    delay(residual)
-                }
-            } else {
-                println("Loop took ${-residual} ms longer than expected")
             }
         }
     }
