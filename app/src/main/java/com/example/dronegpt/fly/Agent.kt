@@ -334,6 +334,19 @@ object FlightManager {
                 StateManager.state.sticks?.rightStick = instruction.rightStick
             }
 
+            is Stop -> {
+                val stickManager = VirtualStickManager.getInstance()
+                stickManager.leftStick.verticalPosition =
+                    0
+                stickManager.leftStick.horizontalPosition = 0
+                stickManager.rightStick.verticalPosition = 0
+
+                stickManager.rightStick.horizontalPosition = 0
+
+                StateManager.state.sticks?.leftStick = StickPosition(0, 0)
+                StateManager.state.sticks?.rightStick = StickPosition(0, 0)
+            }
+
             is Land -> {
                 KeyManager.getInstance()
                     .performAction(
@@ -372,6 +385,8 @@ data class Land(val type: String) : Instruction()
 data class Control(val type: String, val leftStick: StickPosition, val rightStick: StickPosition) :
     Instruction()
 
+data class Stop(val type: String = "stop") : Instruction()
+
 class InstructionDeserializer : JsonDeserializer<Instruction> {
     override fun deserialize(
         json: JsonElement,
@@ -382,6 +397,7 @@ class InstructionDeserializer : JsonDeserializer<Instruction> {
 
         return when (jsonObject.get("type").asString) {
             "control" -> context.deserialize<Control>(json, Control::class.java)
+            "stop" -> context.deserialize<Control>(json, Stop::class.java)
             "take_off" -> context.deserialize<TakeOff>(json, TakeOff::class.java)
             "land" -> context.deserialize<Land>(json, Land::class.java)
             else -> {
@@ -411,68 +427,87 @@ class Agent : ViewModel() {
         viewModelScope.launch {
             CoroutineScope(Dispatchers.IO).launch {
                 messages.add(command)
-                withContext(Dispatchers.Main){ chatMessages.value = messages }
+                withContext(Dispatchers.Main) { chatMessages.value = messages }
                 println(command)
 
                 val gson = GsonBuilder()
                     .registerTypeAdapter(Instruction::class.java, InstructionDeserializer())
                     .create()
 
-                while (true) {
-                    val targetLoopMs = 5000
-                    val startTime = System.currentTimeMillis()
-                    val imageSnapshot = VisionManager.image
-                    val state = gson.toJson(StateManager.state)
-                    val contentParts = mutableListOf<ContentPart>(
-                        TextContentPart("text", state)
-                    )
-                    if (imageSnapshot != null) {
-                        contentParts.add(
-                            ImageUrlContentPart(
-                                "image_url", RawImageUrl(
-                                    "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
-                                    "An image captured from the drone's camera."
+                try {
+                    while (true) {
+                        val targetLoopMs = 5000
+                        val startTime = System.currentTimeMillis()
+                        val imageSnapshot = VisionManager.image
+                        val state = gson.toJson(StateManager.state)
+                        val contentParts = mutableListOf<ContentPart>(
+                            TextContentPart("text", state)
+                        )
+                        if (imageSnapshot != null) {
+                            contentParts.add(
+                                ImageUrlContentPart(
+                                    "image_url", RawImageUrl(
+                                        "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
+                                        "An image captured from the drone's camera."
+                                    )
                                 )
                             )
-                        )
-                    }
-                    val imageMessage = ChatImageMessage("system", contentParts)
-                    messages.add(imageMessage)
-                    withContext(Dispatchers.Main){ chatMessages.value = messages }
-                    println(imageMessage)
+                        }
+                        val imageMessage = ChatImageMessage("system", contentParts)
+                        messages.add(imageMessage)
+                        withContext(Dispatchers.Main) { chatMessages.value = messages }
+                        println(imageMessage)
 
-                    val filteredMessages = getAgentMessages()
-                    val request = ChatCompletionRequest(model, filteredMessages, 512)
-                    println(request)
-                    val response = ChatCompletionAPI.create(request)
-                    val completionMessage = response.choices[0].message
-                    messages.add(completionMessage)
-                    withContext(Dispatchers.Main){ chatMessages.value = messages }
-                    println(completionMessage)
-                    if (completionMessage is ChatAssistantMessage) {
-                        val instructionJson = extractJson(completionMessage.content)
-                        if (instructionJson != null) {
-                            val instruction =
-                                gson.fromJson(instructionJson, Instruction::class.java)
-                            println("Got instruction $instruction")
-                            FlightManager.execute(instruction)
+                        val filteredMessages = getAgentMessages()
+                        val request = ChatCompletionRequest(model, filteredMessages, 512)
+                        println(request)
+                        val response = try {
+                            ChatCompletionAPI.create(request)
+                        } catch (e: java.net.SocketTimeoutException) {
+                            FlightManager.execute(Stop())
+                            // Adding for consistency
+                            messages.add(
+                                ChatAssistantMessage(
+                                    "assistant",
+                                    """
+                                    {
+                                        "type": "stop",
+                                        "message": "Something went wrong with DroneGPT, stopping."
+                                    }
+                                    """.trimIndent()
+                                )
+                            )
+                            continue
+                        }
+                        val completionMessage = response.choices[0].message
+                        messages.add(completionMessage)
+                        withContext(Dispatchers.Main) { chatMessages.value = messages }
+                        println(completionMessage)
+                        if (completionMessage is ChatAssistantMessage) {
+                            val instructionJson = extractJson(completionMessage.content)
+                            if (instructionJson != null) {
+                                val instruction =
+                                    gson.fromJson(instructionJson, Instruction::class.java)
+                                println("Got instruction $instruction")
+                                FlightManager.execute(instruction)
+                            } else {
+                                FlightManager.execute(Stop())
+                                break
+                            }
+                        }
+                        val duration = System.currentTimeMillis() - startTime
+                        println("Loop took $duration ms to run")
+                        val residual = targetLoopMs - duration
+                        if (residual > 0) {
+                            runBlocking {
+                                delay(residual)
+                            }
                         } else {
-                            val nullInstruction =
-                                Control("control", StickPosition(0, 0), StickPosition(0, 0))
-                            FlightManager.execute(nullInstruction)
-                            break
+                            println("Loop took ${-residual} ms longer than expected")
                         }
                     }
-                    val duration = System.currentTimeMillis() - startTime
-                    println("Loop took $duration ms to run")
-                    val residual = targetLoopMs - duration
-                    if (residual > 0) {
-                        runBlocking {
-                            delay(residual)
-                        }
-                    } else {
-                        println("Loop took ${-residual} ms longer than expected")
-                    }
+                } catch (e: Exception) {
+                    FlightManager.execute(Stop())
                 }
             }
         }
