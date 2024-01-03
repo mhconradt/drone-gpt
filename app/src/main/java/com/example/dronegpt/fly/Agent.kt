@@ -21,7 +21,6 @@ import com.google.gson.GsonBuilder
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
-import dji.sdk.keyvalue.key.CameraKey
 import dji.sdk.keyvalue.key.FlightControllerKey
 import dji.sdk.keyvalue.key.KeyTools
 import dji.sdk.keyvalue.value.common.ComponentIndexType
@@ -253,27 +252,6 @@ object VisionManager {
     var image: ByteArray? = null
 
     fun initialize() {
-
-        val isConnected = KeyTools.createKey(CameraKey.KeyConnection).get()
-
-        if (isConnected == true) {
-            println("Connected to camera")
-        } else {
-            println("Not connected to camera")
-        }
-        // KeyTools.createKey(CameraKey.KeyPhotoFileFormatRange).set(
-        //     mutableListOf(PhotoFileFormat.JPEG)
-        // )
-        // KeyTools.createKey(CameraKey.KeyCameraMode).set(
-        //     CameraMode.PHOTO_INTERVAL
-        // )
-        // KeyTools.createKey(CameraKey.KeyPhotoIntervalShootSettings).set(
-        //     PhotoIntervalShootSettings(
-        //         1800, // TODO: Max flight time of one hour.
-        //         2.0   // Shoot every 5 seconds, the minimum is 2 seconds
-        //     )
-        // )
-
         val cStreamManager = CameraStreamManager.getInstance()
 
         cStreamManager.addFrameListener(
@@ -465,6 +443,8 @@ object Agent {
                     println("Got instruction $instruction")
                     FlightManager.execute(instruction)
                 } else {
+                    val nullInstruction = Control("control", StickPosition(0, 0), StickPosition(0, 0))
+                    FlightManager.execute(nullInstruction)
                     return
                 }
             }

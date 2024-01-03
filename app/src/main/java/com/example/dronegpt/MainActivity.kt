@@ -87,7 +87,12 @@ fun DroneCameraView(modifier: Modifier = Modifier) {
         factory = { ctx ->
             SurfaceView(ctx).apply {
                 holder.addCallback(object : SurfaceHolder.Callback {
-                    override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
+                    override fun surfaceChanged(
+                        holder: SurfaceHolder,
+                        format: Int,
+                        width: Int,
+                        height: Int
+                    ) {
                         surfaceSize = Size(width, height)
                         // Now surfaceSize holds the width and height of the surface
                     }
@@ -106,7 +111,13 @@ fun DroneCameraView(modifier: Modifier = Modifier) {
             val cameraStreamManager = CameraStreamManager.getInstance()
             cameraStreamManager.addAvailableCameraUpdatedListener {
                 if (it.isNotEmpty()) {
-                    cameraStreamManager.putCameraStreamSurface(it[0], surface, surfaceSize.width, surfaceSize.height, ICameraStreamManager.ScaleType.CENTER_INSIDE)
+                    cameraStreamManager.putCameraStreamSurface(
+                        it[0],
+                        surface,
+                        surfaceSize.width,
+                        surfaceSize.height,
+                        ICameraStreamManager.ScaleType.CENTER_INSIDE
+                    )
                 }
             }
         }
@@ -119,16 +130,20 @@ class MainActivity : ComponentActivity() {
     private val MY_PERMISSIONS_REQUEST_LOCATION = 1
     private fun checkLocationPermission() {
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
-            != PackageManager.PERMISSION_GRANTED) {
+            != PackageManager.PERMISSION_GRANTED
+        ) {
             // Permission is not granted, request it
-            ActivityCompat.requestPermissions(this,
+            ActivityCompat.requestPermissions(
+                this,
                 arrayOf(Manifest.permission.ACCESS_FINE_LOCATION),
-                MY_PERMISSIONS_REQUEST_LOCATION)
+                MY_PERMISSIONS_REQUEST_LOCATION
+            )
         } else {
             // Permission is already granted, you can use location services
             getLastLocation()
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -136,51 +151,68 @@ class MainActivity : ComponentActivity() {
             DroneGPTTheme {
                 Box(
                     modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.BottomStart // Aligns children to the bottom start (bottom left)
+                    contentAlignment = Alignment.TopEnd // Aligns children to the bottom start (bottom left)
                 ) {
                     Surface(modifier = Modifier.fillMaxSize()) {
-                        Column {
-                            ConversationHistory(Agent.getChatMessages())
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                        ) {
+                            LazyColumn(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                items(Agent.getChatMessages()) { message -> MessageCard(msg = message) }
+                            }
 
-                            var text by remember { mutableStateOf("Take off") }
-                            TextField(
-                                value = text,
-                                onValueChange = { text = it },
+                            var text by remember { mutableStateOf("") }
+                            Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(16.dp),
-                                trailingIcon = {
-                                    Button(
-                                        onClick = {
-                                            println(text)
-                                            Log.i(TAG, "Launching coroutine...")
-                                            // Launching a coroutine
-                                            CoroutineScope(Dispatchers.IO).launch {
-                                                Log.i(TAG, "Launched coroutine...")
-                                                try {
-                                                    Agent.run(ChatUserMessage("user", text))
-                                                    // Switch back to the Main thread for UI operations
-                                                    withContext(Dispatchers.Main) {
-                                                        text = "Type a message"
+                                    .padding(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextField(
+                                    value = text,
+                                    onValueChange = { text = it },
+                                    placeholder = { Text("Message DroneGPT...") },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(8.dp),
+                                    trailingIcon = {
+                                        Button(
+                                            modifier = Modifier.padding(8.dp),
+                                            onClick = {
+                                                Log.i(TAG, "Launching coroutine...")
+                                                // Launching a coroutine
+                                                CoroutineScope(Dispatchers.IO).launch {
+                                                    Log.i(TAG, "Launched coroutine...")
+                                                    try {
+                                                        Agent.run(ChatUserMessage("user", text))
+                                                        // Switch back to the Main thread for UI operations
+                                                        withContext(Dispatchers.Main) {
+                                                            text = ""
+                                                        }
+                                                    } catch (e: Exception) {
+                                                        Log.e(TAG, e.stackTraceToString())
+                                                        TODO("Not yet implemented")
                                                     }
-                                                } catch (e: Exception) {
-                                                    Log.e(TAG, e.stackTraceToString())
-                                                    TODO("Not yet implemented")
                                                 }
                                             }
+                                        ) {
+                                            Icon(
+                                                Icons.Rounded.Send,
+                                                contentDescription = "Send"
+                                            )
                                         }
-                                    ) {
-                                        Icon(
-                                            Icons.Rounded.Send,
-                                            contentDescription = "Send"
-                                        )
                                     }
-                                }
-                            )
+                                )
+                            }
                         }
                     }
                     DroneCameraView(
-                        modifier = Modifier.padding(16.dp).size(200.dp, 150.dp)
+                        modifier = Modifier
+                            .padding(16.dp)
+                            .size(200.dp, 150.dp)
                     )
                 }
             }
@@ -252,9 +284,11 @@ class MainActivity : ComponentActivity() {
                 )
 
                 val rcConnected = KeyTools.createKey(RemoteControllerKey.KeyConnection).get()
-                val rcFlightMode = KeyTools.createKey(FlightControllerKey.KeyRemoteControllerFlightMode).get()
+                val rcFlightMode =
+                    KeyTools.createKey(FlightControllerKey.KeyRemoteControllerFlightMode).get()
                 val flightMode = KeyTools.createKey(FlightControllerKey.KeyFlightMode).get()
-                val multiControl = KeyTools.createKey(RemoteControllerKey.KeyMultiControlIsSupported).get()
+                val multiControl =
+                    KeyTools.createKey(RemoteControllerKey.KeyMultiControlIsSupported).get()
                 println("virtualStick $multiControl $rcConnected $rcFlightMode $flightMode")
 
                 stickManager.enableVirtualStick(
@@ -294,7 +328,7 @@ data class Message(val author: String, val body: String)
 
 @Composable
 fun MessageCard(msg: ChatMessage) {
-    if (msg is ChatAssistantMessage) {
+    if (msg is ChatUserMessage) {
         Row(modifier = Modifier.padding(all = 8.dp)) {
             var isExpanded by remember { mutableStateOf(false) }
             val surfaceColor by animateColorAsState(
@@ -303,7 +337,7 @@ fun MessageCard(msg: ChatMessage) {
 
             Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
                 Text(
-                    text = msg.role,
+                    text = "User",
                     color = MaterialTheme.colorScheme.secondary,
                     style = MaterialTheme.typography.titleSmall
                 )
@@ -334,7 +368,7 @@ fun MessageCard(msg: ChatMessage) {
 
             Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
                 Text(
-                    text = msg.role,
+                    text = "Assistant",
                     color = MaterialTheme.colorScheme.secondary,
                     style = MaterialTheme.typography.titleSmall
                 )
@@ -377,14 +411,17 @@ fun PreviewMessageCard() {
 object SampleData {
     // Sample conversation data
     val conversationSample = listOf(
-        ChatUserMessage("user",
+        ChatUserMessage(
+            "user",
             "Hello",
         ),
-        ChatAssistantMessage("assistant",
+        ChatAssistantMessage(
+            "assistant",
             "Hi, how can I help you today?",
             listOf()
         ),
-        ChatUserMessage("user",
+        ChatUserMessage(
+            "user",
             "I want to fly my drone"
         )
     )
@@ -392,9 +429,7 @@ object SampleData {
 
 @Composable
 fun ConversationHistory(messages: List<ChatMessage>) {
-    LazyColumn {
-        items(messages) { message -> MessageCard(msg = message) }
-    }
+
 }
 
 @Preview
