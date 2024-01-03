@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.ViewModel
 import com.example.dronegpt.chat.ChatAssistantMessage
 import com.example.dronegpt.chat.ChatCompletionAPI
 import com.example.dronegpt.chat.ChatCompletionRequest
@@ -35,8 +37,11 @@ import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import dji.v5.manager.datacenter.camera.CameraStreamManager
 import dji.v5.manager.interfaces.ICameraStreamManager
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.lang.reflect.Type
 import java.nio.ByteBuffer
@@ -385,7 +390,7 @@ class InstructionDeserializer : JsonDeserializer<Instruction> {
 }
 
 
-object Agent {
+class Agent: ViewModel() {
     val model: String = "gpt-4-vision-preview"
     val messages: MutableList<ChatMessage> = mutableListOf(
         ChatSystemMessage(
@@ -393,14 +398,20 @@ object Agent {
             SYSTEM_PROMPT,
         )
     )
+    val chatMessages: MutableLiveData<List<ChatMessage>> = MutableLiveData<List<ChatMessage>>()
 
     fun getChatMessages(): List<ChatMessage> {
         return messages.filter { it is ChatUserMessage || (it is ChatAssistantMessage && !it.isControl()) }
     }
 
     @OptIn(ExperimentalEncodingApi::class)
-    fun run(command: ChatUserMessage) {
+    suspend fun run(command: ChatUserMessage) {
         messages.add(command)
+        coroutineScope{
+            withContext(Dispatchers.Main) {
+                chatMessages.value = messages
+            }
+        }
         println(command)
 
         val gson = GsonBuilder()
@@ -427,6 +438,11 @@ object Agent {
             }
             val imageMessage = ChatImageMessage("system", contentParts)
             messages.add(imageMessage)
+            coroutineScope{
+                withContext(Dispatchers.Main) {
+                    chatMessages.value = messages
+                }
+            }
             println(imageMessage)
 
             val filteredMessages = getAgentMessages()
@@ -435,6 +451,11 @@ object Agent {
             val response = ChatCompletionAPI.create(request)
             val completionMessage = response.choices[0].message
             messages.add(completionMessage)
+            coroutineScope{
+                withContext(Dispatchers.Main) {
+                    chatMessages.value = messages
+                }
+            }
             println(completionMessage)
             if (completionMessage is ChatAssistantMessage) {
                 val instructionJson = extractJson(completionMessage.content)

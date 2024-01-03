@@ -132,7 +132,7 @@ dependencies {
     // // Optional - Integration with ViewModels
     // implementation 'androidx.lifecycle:lifecycle-viewmodel-compose:2.6.1'
     // // Optional - Integration with LiveData
-    // implementation 'androidx.compose.runtime:runtime-livedata'
+    implementation 'androidx.compose.runtime:runtime-livedata'
     // // Optional - Integration with RxJava
     // implementation 'androidx.compose.runtime:runtime-rxjava2'
 }

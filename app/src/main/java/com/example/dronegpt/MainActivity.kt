@@ -9,6 +9,7 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.viewModels
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
@@ -33,6 +34,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.livedata.observeAsState
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -124,8 +126,71 @@ fun DroneCameraView(modifier: Modifier = Modifier) {
     )
 }
 
+@Composable
+fun ChatScreen(viewModel: Agent) {
+    val messages by viewModel.chatMessages.observeAsState(initial = emptyList())
+
+    Surface(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+        ) {
+            LazyColumn(
+                modifier = Modifier.weight(1f)
+            ) {
+                items(messages) { message -> MessageCard(msg = message) }
+            }
+
+            var text by remember { mutableStateOf("") }
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    placeholder = { Text("Message DroneGPT...") },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(8.dp),
+                    trailingIcon = {
+                        Button(
+                            modifier = Modifier.padding(8.dp),
+                            onClick = {
+                                Log.i("ChatScreen", "Launching coroutine...")
+                                // Launching a coroutine
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    Log.i("ChatScreen", "Launched coroutine...")
+                                    try {
+                                        viewModel.run(ChatUserMessage("user", text))
+                                        // Switch back to the Main thread for UI operations
+                                        withContext(Dispatchers.Main) {
+                                            text = ""
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("ChatScreen", e.stackTraceToString())
+                                        TODO("Not yet implemented")
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(
+                                Icons.Rounded.Send,
+                                contentDescription = "Send"
+                            )
+                        }
+                    }
+                )
+            }
+        }
+    }
+}
+
 
 class MainActivity : ComponentActivity() {
+    private val viewModel: Agent by viewModels()
     private val TAG = this::class.simpleName
     private val MY_PERMISSIONS_REQUEST_LOCATION = 1
     private fun checkLocationPermission() {
@@ -153,62 +218,7 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.TopEnd // Aligns children to the bottom start (bottom left)
                 ) {
-                    Surface(modifier = Modifier.fillMaxSize()) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                        ) {
-                            LazyColumn(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                items(Agent.getChatMessages()) { message -> MessageCard(msg = message) }
-                            }
-
-                            var text by remember { mutableStateOf("") }
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(8.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                TextField(
-                                    value = text,
-                                    onValueChange = { text = it },
-                                    placeholder = { Text("Message DroneGPT...") },
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(8.dp),
-                                    trailingIcon = {
-                                        Button(
-                                            modifier = Modifier.padding(8.dp),
-                                            onClick = {
-                                                Log.i(TAG, "Launching coroutine...")
-                                                // Launching a coroutine
-                                                CoroutineScope(Dispatchers.IO).launch {
-                                                    Log.i(TAG, "Launched coroutine...")
-                                                    try {
-                                                        Agent.run(ChatUserMessage("user", text))
-                                                        // Switch back to the Main thread for UI operations
-                                                        withContext(Dispatchers.Main) {
-                                                            text = ""
-                                                        }
-                                                    } catch (e: Exception) {
-                                                        Log.e(TAG, e.stackTraceToString())
-                                                        TODO("Not yet implemented")
-                                                    }
-                                                }
-                                            }
-                                        ) {
-                                            Icon(
-                                                Icons.Rounded.Send,
-                                                contentDescription = "Send"
-                                            )
-                                        }
-                                    }
-                                )
-                            }
-                        }
-                    }
+                    ChatScreen(viewModel)
                     DroneCameraView(
                         modifier = Modifier
                             .padding(16.dp)
@@ -220,6 +230,8 @@ class MainActivity : ComponentActivity() {
         registerApp()
         checkLocationPermission()
     }
+
+
 
     private fun registerApp() {
         SDKManager.getInstance().init(this, object : SDKManagerCallback {
@@ -328,6 +340,7 @@ data class Message(val author: String, val body: String)
 
 @Composable
 fun MessageCard(msg: ChatMessage) {
+    println("WireCard $msg")
     if (msg is ChatUserMessage) {
         Row(modifier = Modifier.padding(all = 8.dp)) {
             var isExpanded by remember { mutableStateOf(false) }
