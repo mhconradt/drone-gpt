@@ -4,7 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.ImageFormat
 import android.graphics.Rect
 import android.graphics.YuvImage
-import androidx.lifecycle.MutableLiveData
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.dronegpt.chat.ChatAssistantMessage
@@ -18,7 +18,6 @@ import com.example.dronegpt.chat.ContentPart
 import com.example.dronegpt.chat.ImageUrlContentPart
 import com.example.dronegpt.chat.RawImageUrl
 import com.example.dronegpt.chat.TextContentPart
-import com.example.dronegpt.chat.isControl
 import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonDeserializationContext
@@ -38,9 +37,10 @@ import dji.v5.manager.KeyManager
 import dji.v5.manager.aircraft.virtualstick.VirtualStickManager
 import dji.v5.manager.datacenter.camera.CameraStreamManager
 import dji.v5.manager.interfaces.ICameraStreamManager
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -416,99 +416,126 @@ class Agent : ViewModel() {
             SYSTEM_PROMPT,
         )
     )
-    val chatMessages: MutableLiveData<List<ChatMessage>> = MutableLiveData<List<ChatMessage>>()
 
-    fun getChatMessages(): List<ChatMessage> {
-        return messages.filter { it is ChatUserMessage || (it is ChatAssistantMessage && !it.isControl()) }
+    private val _chatMessages = MutableStateFlow(messages)
+
+    val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages
+
+    init {
+        Log.d("AgentViewModel", "ViewModel created")
+        observeLifecycleEvents()
     }
+
+    private fun observeLifecycleEvents() {
+        viewModelScope.launch {
+            // Your lifecycle observing logic here
+            Log.d("AgentViewModel", "Observing lifecycle events")
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        Log.d("AgentViewModel", "ViewModel cleared")
+    }
+
 
     @OptIn(ExperimentalEncodingApi::class)
     fun run(command: ChatUserMessage) {
-        viewModelScope.launch {
-            CoroutineScope(Dispatchers.IO).launch {
-                messages.add(command)
-                withContext(Dispatchers.Main) { chatMessages.value = messages }
-                println(command)
+        viewModelScope.launch(Dispatchers.IO) {
+            messages.add(command)
+            withContext(Dispatchers.Main) {
+                println("Updating state ${messages.size}")
+                _chatMessages.value = messages
+                println("Updated state ${messages.size}")
+            }
+            println(command)
 
-                val gson = GsonBuilder()
-                    .registerTypeAdapter(Instruction::class.java, InstructionDeserializer())
-                    .create()
+            val gson = GsonBuilder()
+                .registerTypeAdapter(Instruction::class.java, InstructionDeserializer())
+                .create()
 
-                try {
-                    while (true) {
-                        val targetLoopMs = 5000
-                        val startTime = System.currentTimeMillis()
-                        val imageSnapshot = VisionManager.image
-                        val state = gson.toJson(StateManager.state)
-                        val contentParts = mutableListOf<ContentPart>(
-                            TextContentPart("text", state)
-                        )
-                        if (imageSnapshot != null) {
-                            contentParts.add(
-                                ImageUrlContentPart(
-                                    "image_url", RawImageUrl(
-                                        "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
-                                        "An image captured from the drone's camera."
-                                    )
+            try {
+                while (true) {
+                    val targetLoopMs = 5000
+                    val startTime = System.currentTimeMillis()
+                    val imageSnapshot = VisionManager.image
+                    val state = gson.toJson(StateManager.state)
+                    val contentParts = mutableListOf<ContentPart>(
+                        TextContentPart("text", state)
+                    )
+                    if (imageSnapshot != null) {
+                        contentParts.add(
+                            ImageUrlContentPart(
+                                "image_url", RawImageUrl(
+                                    "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
+                                    "An image captured from the drone's camera."
                                 )
                             )
-                        }
-                        val imageMessage = ChatImageMessage("system", contentParts)
-                        messages.add(imageMessage)
-                        withContext(Dispatchers.Main) { chatMessages.value = messages }
-                        println(imageMessage)
+                        )
+                    }
+                    val imageMessage = ChatImageMessage("system", contentParts)
+                    messages.add(imageMessage)
+                    withContext(Dispatchers.Main) {
+                        println("Updating state ${messages.size}")
+                        _chatMessages.value = messages
+                        println("Updated state ${messages.size}")
+                    }
+                    println(imageMessage)
 
-                        val filteredMessages = getAgentMessages()
-                        val request = ChatCompletionRequest(model, filteredMessages, 512)
-                        println(request)
-                        val response = try {
-                            ChatCompletionAPI.create(request)
-                        } catch (e: java.net.SocketTimeoutException) {
-                            FlightManager.execute(Stop())
-                            // Adding for consistency
-                            messages.add(
-                                ChatAssistantMessage(
-                                    "assistant",
-                                    """
+                    val filteredMessages = getAgentMessages()
+                    val request = ChatCompletionRequest(model, filteredMessages, 512)
+                    println(request)
+                    val response = try {
+                        ChatCompletionAPI.create(request)
+                    } catch (e: java.net.SocketTimeoutException) {
+                        FlightManager.execute(Stop())
+                        // Adding for consistency
+                        messages.add(
+                            ChatAssistantMessage(
+                                "assistant",
+                                """
                                     {
                                         "type": "stop",
                                         "message": "Something went wrong with DroneGPT, stopping."
                                     }
                                     """.trimIndent()
-                                )
                             )
-                            continue
-                        }
-                        val completionMessage = response.choices[0].message
-                        messages.add(completionMessage)
-                        withContext(Dispatchers.Main) { chatMessages.value = messages }
-                        println(completionMessage)
-                        if (completionMessage is ChatAssistantMessage) {
-                            val instructionJson = extractJson(completionMessage.content)
-                            if (instructionJson != null) {
-                                val instruction =
-                                    gson.fromJson(instructionJson, Instruction::class.java)
-                                println("Got instruction $instruction")
-                                FlightManager.execute(instruction)
-                            } else {
-                                FlightManager.execute(Stop())
-                                break
-                            }
-                        }
-                        val duration = System.currentTimeMillis() - startTime
-                        println("Loop took $duration ms to run")
-                        val residual = targetLoopMs - duration
-                        if (residual > 0) {
-                            runBlocking {
-                                delay(residual)
-                            }
+                        )
+                        continue
+                    }
+                    val completionMessage = response.choices[0].message
+                    messages.add(completionMessage)
+                    withContext(Dispatchers.Main) {
+                        println("Updating state ${messages.size}")
+                        _chatMessages.value = messages
+                        println("Updated state ${messages.size}")
+                    }
+                    println(completionMessage)
+                    if (completionMessage is ChatAssistantMessage) {
+                        val instructionJson = extractJson(completionMessage.content)
+                        if (instructionJson != null) {
+                            val instruction =
+                                gson.fromJson(instructionJson, Instruction::class.java)
+                            println("Got instruction $instruction")
+                            FlightManager.execute(instruction)
                         } else {
-                            println("Loop took ${-residual} ms longer than expected")
+                            FlightManager.execute(Stop())
+                            break
                         }
                     }
-                } catch (e: Exception) {
-                    FlightManager.execute(Stop())
+                    val duration = System.currentTimeMillis() - startTime
+                    println("Loop took $duration ms to run")
+                    val residual = targetLoopMs - duration
+                    if (residual > 0) {
+                        runBlocking {
+                            delay(residual)
+                        }
+                    } else {
+                        println("Loop took ${-residual} ms longer than expected")
+                    }
                 }
+            } catch (e: Exception) {
+                FlightManager.execute(Stop())
             }
         }
     }
