@@ -417,7 +417,7 @@ class Agent : ViewModel() {
         )
     )
 
-    private val _chatMessages = MutableStateFlow(messages)
+    private val _chatMessages: MutableStateFlow<List<ChatMessage>> = MutableStateFlow(messages)
 
     val chatMessages: StateFlow<List<ChatMessage>> = _chatMessages
 
@@ -445,7 +445,7 @@ class Agent : ViewModel() {
             messages.add(command)
             withContext(Dispatchers.Main) {
                 println("Updating state ${messages.size}")
-                _chatMessages.value = messages
+                _chatMessages.value = messages + messages[0]
                 println("Updated state ${messages.size}")
             }
             println(command)
@@ -477,7 +477,7 @@ class Agent : ViewModel() {
                     messages.add(imageMessage)
                     withContext(Dispatchers.Main) {
                         println("Updating state ${messages.size}")
-                        _chatMessages.value = messages
+                        _chatMessages.value = messages + messages[0]
                         println("Updated state ${messages.size}")
                     }
                     println(imageMessage)
@@ -507,7 +507,7 @@ class Agent : ViewModel() {
                     messages.add(completionMessage)
                     withContext(Dispatchers.Main) {
                         println("Updating state ${messages.size}")
-                        _chatMessages.value = messages
+                        _chatMessages.value = messages + messages[0]
                         println("Updated state ${messages.size}")
                     }
                     println(completionMessage)

@@ -123,6 +123,9 @@ fun DroneCameraView(modifier: Modifier = Modifier) {
 @Composable
 fun ChatScreen(viewModel: Agent) {
     val messages by viewModel.chatMessages.collectAsState()
+
+    println("ChatScreen rendering")
+
     Surface(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
