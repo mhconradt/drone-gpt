@@ -9,6 +9,7 @@ plugins {
 android {
     buildFeatures {
         compose true
+        buildConfig true
     }
 
     composeOptions {
@@ -26,6 +27,11 @@ android {
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        Properties properties = new Properties()
+        properties.load(project.rootProject.file('local.properties').newDataInputStream())
+        String openAIAPIKey = properties.getProperty('OPENAI_API_KEY', "")
+        buildConfigField "String", "OPENAI_API_KEY", "\"${openAIAPIKey}\""
 
         ndk {
             abiFilters 'arm64-v8a'
@@ -85,6 +91,7 @@ android {
 }
 
 dependencies {
+    implementation 'com.squareup.okhttp3:logging-interceptor:4.9.0' // Use the latest version
     implementation 'com.dji:dji-sdk-v5-aircraft:5.8.0'
     compileOnly 'com.dji:dji-sdk-v5-aircraft-provided:5.8.0'
     runtimeOnly 'com.dji:dji-sdk-v5-networkImp:5.8.0'

@@ -39,15 +39,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.example.compose.jetchat.theme.DroneGPTTheme
 import com.example.dronegpt.chat.ChatAssistantMessage
-import com.example.dronegpt.chat.ChatMessage
 import com.example.dronegpt.chat.ChatUserMessage
+import com.example.dronegpt.chat.PlainTextMessage
+import com.example.dronegpt.chat.isControl
 import com.example.dronegpt.fly.Agent
 import com.example.dronegpt.fly.StateManager
 import com.example.dronegpt.fly.VisionManager
@@ -76,7 +76,6 @@ data class Size(val width: Int, val height: Int)
 @Composable
 fun DroneCameraView(modifier: Modifier = Modifier) {
     var surfaceSize by remember { mutableStateOf(Size(0, 0)) }
-    val context = LocalContext.current
 
     AndroidView(
         modifier = modifier,
@@ -134,7 +133,7 @@ fun ChatScreen(viewModel: Agent) {
             LazyColumn(
                 modifier = Modifier.weight(1f)
             ) {
-                items(messages) { message -> MessageCard(msg = message) }
+                items(messages.filterIsInstance(PlainTextMessage::class.java)) { message -> MessageCard(msg = message) }
             }
 
             var text by remember { mutableStateOf("") }
@@ -273,23 +272,6 @@ class MainActivity : ComponentActivity() {
                 val statusManager = DeviceStatusManager.getInstance()
                 Log.i(TAG, "Current status: ${statusManager.currentDJIDeviceStatus}")
 
-                // SimulatorManager.getInstance().enableSimulator(
-                //     InitializationSettings.createInstance(
-                //         LocationCoordinate2D(37.44601560124988, -122.15639375795153),
-                //         5,
-                //     ),
-                //     object: CompletionCallback {
-                //         override fun onSuccess() {
-                //             Log.i(TAG, "Simulator enabled")
-                //         }
-                //
-                //         override fun onFailure(error: IDJIError) {
-                //             Log.e(TAG, "enableSimulator failed: $error")
-                //         }
-                //
-                //     }
-                // )
-
                 val error = UASRemoteIDManager.getInstance()
                     .setUASRemoteIDAreaStrategy(AreaStrategy.US_STRATEGY)
 
@@ -308,7 +290,6 @@ class MainActivity : ComponentActivity() {
                         override fun onChangeReasonUpdate(reason: FlightControlAuthorityChangeReason) {
                             println("onChangeReasonUpdate $reason")
                         }
-
                     }
                 )
 
@@ -353,71 +334,40 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-data class Message(val author: String, val body: String)
-
 @Composable
-fun MessageCard(msg: ChatMessage) {
-    println("WireCard $msg")
-    if (msg is ChatUserMessage) {
-        Row(modifier = Modifier.padding(all = 8.dp)) {
-            var isExpanded by remember { mutableStateOf(false) }
-            val surfaceColor by animateColorAsState(
-                if (isExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-            )
+fun MessageCard(msg: PlainTextMessage) {
+    if (msg is ChatAssistantMessage && msg.isControl()) {
+        return
+    }
+    Log.d("MessageCard", "Rendering message: $msg")
+    Row(modifier = Modifier.padding(all = 8.dp)) {
+        var isExpanded by remember { mutableStateOf(false) }
+        val surfaceColor by animateColorAsState(
+            if (isExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+            label = "Color",
+        )
 
-            Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
-                Text(
-                    text = "User",
-                    color = MaterialTheme.colorScheme.secondary,
-                    style = MaterialTheme.typography.titleSmall
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    shadowElevation = 1.dp,
-                    color = surfaceColor,
-                    modifier = Modifier
-                        .animateContentSize()
-                        .padding(1.dp)
-                ) {
-                    Text(
-                        text = msg.content,
-                        modifier = Modifier.padding(all = 4.dp),
-                        maxLines = if (isExpanded) Int.MAX_VALUE else 1,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
-            }
-        }
-    } else if (msg is ChatAssistantMessage) {
-        Row(modifier = Modifier.padding(all = 8.dp)) {
-            var isExpanded by remember { mutableStateOf(false) }
-            val surfaceColor by animateColorAsState(
-                if (isExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+        Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
+            Text(
+                text = msg.role.replaceFirstChar { it.titlecase() },
+                color = MaterialTheme.colorScheme.secondary,
+                style = MaterialTheme.typography.titleSmall
             )
-
-            Column(modifier = Modifier.clickable { isExpanded = !isExpanded }) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                shadowElevation = 1.dp,
+                color = surfaceColor,
+                modifier = Modifier
+                    .animateContentSize()
+                    .padding(1.dp)
+            ) {
                 Text(
-                    text = "Assistant",
-                    color = MaterialTheme.colorScheme.secondary,
-                    style = MaterialTheme.typography.titleSmall
+                    text = msg.content,
+                    modifier = Modifier.padding(all = 4.dp),
+                    maxLines = if (isExpanded) Int.MAX_VALUE else 1,
+                    style = MaterialTheme.typography.bodyMedium
                 )
-                Spacer(modifier = Modifier.height(4.dp))
-                Surface(
-                    shape = MaterialTheme.shapes.medium,
-                    shadowElevation = 1.dp,
-                    color = surfaceColor,
-                    modifier = Modifier
-                        .animateContentSize()
-                        .padding(1.dp)
-                ) {
-                    Text(
-                        text = msg.content,
-                        modifier = Modifier.padding(all = 4.dp),
-                        maxLines = if (isExpanded) Int.MAX_VALUE else 1,
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                }
             }
         }
     }

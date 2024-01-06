@@ -5,6 +5,11 @@ import com.google.gson.JsonDeserializer
 import com.google.gson.JsonElement
 import java.lang.reflect.Type
 
+interface PlainTextMessage {
+    val role: String
+    val content: String
+}
+
 sealed class ContentPart
 data class TextContentPart(val type: String, val text: String) : ContentPart()
 data class RawImageUrl(val url: String, val detail: String)
@@ -20,15 +25,15 @@ sealed class ChatMessage
 data class ChatSystemMessage(val role: String, val content: String): ChatMessage()
 
 // No difference here either
-data class ChatUserMessage(val role: String, val content: String) : ChatMessage()
+data class ChatUserMessage(override val role: String, override val content: String) : ChatMessage(), PlainTextMessage
 
 // Most of the headache comes from this
 data class ChatImageMessage(val role: String, val content: List<ContentPart>) : ChatMessage()
 data class ChatAssistantMessage(
-    val role: String,
-    val content: String,
+    override val role: String,
+    override val content: String,
     val tool_calls: List<ToolCall>? = null
-) : ChatMessage()
+) : ChatMessage(), PlainTextMessage
 
 fun ChatAssistantMessage.isControl(): Boolean {
     return content.contains("{")
@@ -44,10 +49,6 @@ data class Function(
 )
 
 data class Tool(val type: String = "function", val function: Function)
-
-
-
-
 
 class ChatMessageDeserializer : JsonDeserializer<ChatMessage> {
     override fun deserialize(

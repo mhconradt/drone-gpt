@@ -18,7 +18,6 @@ import com.example.dronegpt.chat.ContentPart
 import com.example.dronegpt.chat.ImageUrlContentPart
 import com.example.dronegpt.chat.RawImageUrl
 import com.example.dronegpt.chat.TextContentPart
-import com.google.gson.Gson
 import com.google.gson.GsonBuilder
 import com.google.gson.JsonDeserializationContext
 import com.google.gson.JsonDeserializer
@@ -161,6 +160,7 @@ data class State(
 
 
 object StateManager {
+    private val TAG = this::class.java.simpleName
     val state: State = State()
 
     fun initialize() {
@@ -171,6 +171,9 @@ object StateManager {
         val compassHeading = KeyTools.createKey(FlightControllerKey.KeyCompassHeading).get()
 
         val stickManager = VirtualStickManager.getInstance()
+
+        // TODO: We're relying on the FlightManager to update these.
+        //  Ideally we could listen for updates to these from the DJI SDK as well.
         val controls = Controls(
             StickPosition(
                 stickManager.leftStick.verticalPosition,
@@ -193,6 +196,8 @@ object StateManager {
         state.compassHeading = compassHeading
         state.sticks = controls
 
+        Log.d(TAG, "State (initial): $state")
+
         // Listen for updates
 
         KeyTools.createKey(FlightControllerKey.KeyAircraftLocation3D).listen(
@@ -200,10 +205,11 @@ object StateManager {
             false
         ) {
             if (it != null) {
+                Log.d(TAG, "Coordinates (new): $it")
                 state.longitude = it.longitude
                 state.latitude = it.latitude
                 state.altitude = it.altitude
-                println(state)
+                Log.i(TAG, "State (new): $state")
             }
         }
 
@@ -212,10 +218,11 @@ object StateManager {
             false
         ) {
             if (it != null) {
+                Log.d(TAG, "Velocity (new): $it")
                 state.xVelocity = it.x
                 state.yVelocity = it.y
                 state.zVelocity = it.z
-                println(state)
+                Log.d(TAG, "State (new): $state")
             }
         }
 
@@ -224,8 +231,9 @@ object StateManager {
             false
         ) {
             if (it != null) {
+                Log.d(TAG, "Compass heading (new): $it")
                 state.compassHeading = it
-                println(state)
+                Log.d(TAG, "State (new): $state")
             }
         }
 
@@ -261,10 +269,12 @@ object VisionManager {
     fun initialize() {
         val cStreamManager = CameraStreamManager.getInstance()
 
+        // TODO: LEFT_OR_MAIN might only work with the DJI Mini 3 Pro
         cStreamManager.addFrameListener(
             ComponentIndexType.LEFT_OR_MAIN, ICameraStreamManager.FrameFormat.NV21
         ) { frameData, offset, length, width, height, format ->
             val relevantData = frameData.copyOfRange(offset, offset + length)
+            // TODO: Push this outside of the loop. A high % of these frames are ignored.
             image = when (format) {
                 ICameraStreamManager.FrameFormat.RGBA_8888 -> {
                     convertRGBA8888ToJpeg(relevantData, width, height)
@@ -283,7 +293,9 @@ object VisionManager {
 }
 
 object FlightManager {
+    private val TAG = this::class.java.simpleName
     fun execute(instruction: Instruction) {
+        Log.i(TAG, "Executing instruction: $instruction")
         when (instruction) {
             is TakeOff -> {
                 KeyTools.createKey(
@@ -304,7 +316,8 @@ object FlightManager {
                             override fun onSuccess(
                                 nil: EmptyMsg
                             ) {
-                                println(
+                                Log.i(
+                                    TAG,
                                     "Taking off"
                                 )
                             }
@@ -312,7 +325,8 @@ object FlightManager {
                             override fun onFailure(
                                 error: IDJIError
                             ) {
-                                println(
+                                Log.i(
+                                    TAG,
                                     "Takeoff failed $error"
                                 )
                             }
@@ -358,7 +372,8 @@ object FlightManager {
                             override fun onSuccess(
                                 nil: EmptyMsg
                             ) {
-                                println(
+                                Log.i(
+                                    TAG,
                                     "Taking off"
                                 )
                             }
@@ -366,7 +381,8 @@ object FlightManager {
                             override fun onFailure(
                                 error: IDJIError
                             ) {
-                                println(
+                                Log.i(
+                                    TAG,
                                     "Takeoff failed $error"
                                 )
                             }
@@ -409,8 +425,10 @@ class InstructionDeserializer : JsonDeserializer<Instruction> {
 
 
 class Agent : ViewModel() {
-    val model: String = "gpt-4-vision-preview"
-    val messages: MutableList<ChatMessage> = mutableListOf(
+    private val TAG = this::class.java.simpleName
+
+    private val model: String = "gpt-4-vision-preview"
+    private val messages: MutableList<ChatMessage> = mutableListOf(
         ChatSystemMessage(
             "system",
             SYSTEM_PROMPT,
@@ -444,11 +462,10 @@ class Agent : ViewModel() {
         viewModelScope.launch(Dispatchers.IO) {
             messages.add(command)
             withContext(Dispatchers.Main) {
-                println("Updating state ${messages.size}")
+                // TODO: + messages[0] is a hack to create a new list
                 _chatMessages.value = messages + messages[0]
-                println("Updated state ${messages.size}")
             }
-            println(command)
+            Log.i(TAG, "Running command: $command")
 
             val gson = GsonBuilder()
                 .registerTypeAdapter(Instruction::class.java, InstructionDeserializer())
@@ -457,7 +474,7 @@ class Agent : ViewModel() {
             try {
                 while (true) {
                     val targetLoopMs = 5000
-                    val startTime = System.currentTimeMillis()
+                    val gptStartTime = System.currentTimeMillis()
                     val imageSnapshot = VisionManager.image
                     val state = gson.toJson(StateManager.state)
                     val contentParts = mutableListOf<ContentPart>(
@@ -476,15 +493,11 @@ class Agent : ViewModel() {
                     val imageMessage = ChatImageMessage("system", contentParts)
                     messages.add(imageMessage)
                     withContext(Dispatchers.Main) {
-                        println("Updating state ${messages.size}")
+                        // TODO: + messages[0] is a hack to create a new list
                         _chatMessages.value = messages + messages[0]
-                        println("Updated state ${messages.size}")
                     }
-                    println(imageMessage)
-
                     val filteredMessages = getAgentMessages()
                     val request = ChatCompletionRequest(model, filteredMessages, 512)
-                    println(request)
                     val response = try {
                         ChatCompletionAPI.create(request)
                     } catch (e: java.net.SocketTimeoutException) {
@@ -503,35 +516,40 @@ class Agent : ViewModel() {
                         )
                         continue
                     }
+                    val gptEndTime = System.currentTimeMillis()
                     val completionMessage = response.choices[0].message
                     messages.add(completionMessage)
                     withContext(Dispatchers.Main) {
-                        println("Updating state ${messages.size}")
+                        // TODO: + messages[0] is a hack to create a new list
                         _chatMessages.value = messages + messages[0]
-                        println("Updated state ${messages.size}")
                     }
-                    println(completionMessage)
+                    Log.i(TAG, "$completionMessage")
+                    // We're using assistant messages vs. tool calls as they're unsupported
+                    // by GPT-V.
                     if (completionMessage is ChatAssistantMessage) {
                         val instructionJson = extractJson(completionMessage.content)
                         if (instructionJson != null) {
                             val instruction =
                                 gson.fromJson(instructionJson, Instruction::class.java)
-                            println("Got instruction $instruction")
                             FlightManager.execute(instruction)
                         } else {
                             FlightManager.execute(Stop())
                             break
                         }
                     }
-                    val duration = System.currentTimeMillis() - startTime
-                    println("Loop took $duration ms to run")
+                    val endTime = System.currentTimeMillis()
+                    val duration = endTime - gptStartTime
+                    Log.d(
+                        TAG,
+                        "Command took $duration ms (${gptEndTime - gptStartTime} + ${endTime - gptEndTime}) (GPT + DJI)"
+                    )
                     val residual = targetLoopMs - duration
                     if (residual > 0) {
                         runBlocking {
                             delay(residual)
                         }
                     } else {
-                        println("Loop took ${-residual} ms longer than expected")
+                        Log.w(TAG, "Loop took ${-residual} ms longer than expected")
                     }
                 }
             } catch (e: Exception) {
@@ -556,8 +574,6 @@ class Agent : ViewModel() {
             SYSTEM MESSAGE: IMAGE (BASE64)
             ASSISTANT MESSAGE
         */
-        // System message
-        // All user + non-control assistant messages
         val lastUserMessage = messages.indexOfLast { it is ChatUserMessage }
         val anchorImageMessage = lastUserMessage + 1
 
@@ -584,42 +600,4 @@ fun extractJson(text: String): String? {
         return null
     }
     return text.substring(left, right + 1)
-}
-
-
-@OptIn(ExperimentalEncodingApi::class)
-fun main() {
-    val gson = Gson()
-
-
-    val encoded = Base64.encode(
-        java.io.File("/Users/maxwellconradt/Documents/sandzenPainting1.jpg").readBytes()
-    )
-
-    val request = ChatCompletionRequest(
-        "gpt-4",
-        listOf(
-            ChatImageMessage(
-                "user",
-                listOf(
-                    TextContentPart(
-                        "text",
-                        "What's in this image?"
-                    ),
-                    ImageUrlContentPart(
-                        "image_url",
-                        RawImageUrl(
-                            "data:image/jpeg;base64,${encoded}",
-                            "An image"
-                        )
-                    )
-                )
-            )
-        ),
-        1024
-    )
-
-    val response = ChatCompletionAPI.create(request)
-
-    println(response.choices[0])
 }
