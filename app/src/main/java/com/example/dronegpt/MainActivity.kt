@@ -11,6 +11,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.viewModels
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +25,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Send
+import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -39,10 +43,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModel
 import com.example.compose.jetchat.theme.DroneGPTTheme
 import com.example.dronegpt.chat.ChatAssistantMessage
 import com.example.dronegpt.chat.ChatUserMessage
@@ -59,6 +65,7 @@ import dji.v5.common.callback.CommonCallbacks.CompletionCallback
 import dji.v5.common.error.IDJIError
 import dji.v5.common.register.DJISDKInitEvent
 import dji.v5.et.get
+import dji.v5.et.listen
 import dji.v5.manager.SDKManager
 import dji.v5.manager.aircraft.uas.AreaStrategy
 import dji.v5.manager.aircraft.uas.UASRemoteIDManager
@@ -70,6 +77,76 @@ import dji.v5.manager.diagnostic.DeviceStatusManager
 import dji.v5.manager.interfaces.ICameraStreamManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import dji.v5.utils.common.LocationUtil.getLastLocation
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+
+
+enum class Status {
+    HEALTHY,
+    WARNING,
+    UNHEALTHY,
+    LOADING
+}
+
+data class StatusInfo(val status: Status, val statusReason: String = "")
+
+private data class InternalStatusInfo(
+    val connectedToDrone: Boolean? = null,
+    val virtualStickEnabled: Boolean? = null,
+) {
+    fun deriveStatusInfo(): StatusInfo {
+        return if (connectedToDrone === null || virtualStickEnabled === null) {
+            StatusInfo(Status.LOADING, "Waiting to connect...")
+        } else if (connectedToDrone && virtualStickEnabled) {
+            StatusInfo(Status.HEALTHY, "All systems go!")
+        } else if (connectedToDrone) {
+            StatusInfo(Status.WARNING, "Virtual stick mode disabled.")
+        } else if (virtualStickEnabled) {
+            StatusInfo(Status.WARNING, "Not connected to drone.")
+        } else {
+            StatusInfo(Status.UNHEALTHY, "Not able to fly.")
+        }
+
+    }
+}
+
+
+class HealthViewModel : ViewModel() {
+    private val TAG = this::class.java.simpleName
+
+    private var internalStatusInfo = InternalStatusInfo(null, null)
+
+    private val _statusInfo = MutableStateFlow(StatusInfo(Status.LOADING, "Loading..."))
+
+    val statusInfo: StateFlow<StatusInfo> = _statusInfo
+
+    fun initialize() {
+        VirtualStickManager.getInstance().setVirtualStickStateListener(
+            object : VirtualStickStateListener {
+                override fun onVirtualStickStateUpdate(stickState: VirtualStickState) {
+                    Log.i(TAG, "virtualStickEnabled (new): ${stickState.isVirtualStickEnable}")
+                    internalStatusInfo = internalStatusInfo.copy(
+                        virtualStickEnabled = stickState.isVirtualStickEnable
+                    )
+                    val statusInfoUpdate = internalStatusInfo.deriveStatusInfo()
+                    Log.i(TAG, "statusInfo (new): $statusInfoUpdate")
+                    _statusInfo.value = statusInfoUpdate
+                }
+
+                override fun onChangeReasonUpdate(reason: FlightControlAuthorityChangeReason) {
+                    Log.i(TAG, "")
+                }
+
+            }
+        )
+        KeyTools.createKey(FlightControllerKey.KeyConnection).listen(this, false) {
+            internalStatusInfo = internalStatusInfo.copy(connectedToDrone = it)
+            val statusInfoUpdate = internalStatusInfo.deriveStatusInfo()
+            Log.i(TAG, "statusInfo (new): $statusInfoUpdate")
+            _statusInfo.value = statusInfoUpdate
+        }
+    }
+}
 
 data class Size(val width: Int, val height: Int)
 
@@ -133,7 +210,11 @@ fun ChatScreen(viewModel: Agent) {
             LazyColumn(
                 modifier = Modifier.weight(1f)
             ) {
-                items(messages.filterIsInstance(PlainTextMessage::class.java)) { message -> MessageCard(msg = message) }
+                items(messages.filterIsInstance(PlainTextMessage::class.java)) { message ->
+                    MessageCard(
+                        msg = message
+                    )
+                }
             }
 
             var text by remember { mutableStateOf("") }
@@ -181,7 +262,8 @@ fun ChatScreen(viewModel: Agent) {
 
 
 class MainActivity : ComponentActivity() {
-    private val viewModel: Agent by viewModels()
+    private val agentViewModel: Agent by viewModels()
+    private val healthViewModel: HealthViewModel by viewModels()
     private val TAG = this::class.simpleName
     private val MY_PERMISSIONS_REQUEST_LOCATION = 1
 
@@ -231,16 +313,20 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             DroneGPTTheme {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.TopEnd // Aligns children to the bottom start (bottom left)
-                ) {
-                    ChatScreen(viewModel)
-                    DroneCameraView(
-                        modifier = Modifier
-                            .padding(16.dp)
-                            .size(200.dp, 150.dp)
-                    )
+
+                Column {
+                    StatusInfoComponent(healthViewModel)
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.TopEnd // Aligns children to the bottom start (bottom left)
+                    ) {
+                        ChatScreen(agentViewModel)
+                        DroneCameraView(
+                            modifier = Modifier
+                                .padding(16.dp)
+                                .size(200.dp, 150.dp)
+                        )
+                    }
                 }
             }
         }
@@ -313,7 +399,7 @@ class MainActivity : ComponentActivity() {
                     }
                 )
                 Log.i(TAG, "Called enableVirtualStick()")
-
+                healthViewModel.initialize()
                 VisionManager.initialize()
                 StateManager.initialize()
             }
@@ -331,6 +417,46 @@ class MainActivity : ComponentActivity() {
                 Log.i(TAG, "onDatabaseDownloadProgress: ${current / total}")
             }
         })
+    }
+}
+
+@Composable
+fun StatusInfoComponent(healthViewModel: HealthViewModel) {
+    val statusInfo by healthViewModel.statusInfo.collectAsState()
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color.LightGray)
+            .padding(16.dp)
+    ) {
+        Row {
+            when (statusInfo.status) {
+                Status.HEALTHY -> Icon(
+                    Icons.Rounded.CheckCircle,
+                    contentDescription = "Status ok icon",
+                    tint = Color.Green,
+                )
+
+                Status.WARNING -> Icon(
+                    Icons.Rounded.Warning,
+                    contentDescription = "Warning icon",
+                    tint = Color.Yellow
+                )
+
+                Status.UNHEALTHY -> Icon(
+                    Icons.Rounded.Warning,
+                    contentDescription = "Unhealthy icon",
+                    tint = Color.Red
+                )
+
+                Status.LOADING -> Icon(
+                    Icons.Default.Refresh,
+                    contentDescription = "Loading icon",
+                    tint = Color.DarkGray,
+                )
+            }
+            Text(statusInfo.statusReason, modifier = Modifier.padding(start = 8.dp))
+        }
     }
 }
 
