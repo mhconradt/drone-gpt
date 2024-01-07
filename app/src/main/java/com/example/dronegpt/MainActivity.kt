@@ -45,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -614,7 +615,7 @@ fun StatusBar(state: StateFlow<StatusInfo>) {
                     text = "$formattedTime",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    
+
                     )
             }
         }
@@ -661,4 +662,72 @@ fun MessageCard(msg: PlainTextMessage) {
             }
         }
     }
+}
+
+@Preview(
+    showBackground = true,
+    name = "Healthy Status Preview"
+)
+@Composable
+fun HealthyStatusPreview() {
+    StatusBar(
+        state = MutableStateFlow(
+            StatusInfo(
+                Status.HEALTHY,
+                "System operational",
+                Instant.now()
+            )
+        )
+    )
+}
+
+@Preview(
+    showBackground = true,
+    name = "Warning Status Preview"
+)
+@Composable
+fun WarningStatusPreview() {
+    StatusBar(
+        state = MutableStateFlow(
+            StatusInfo(
+                Status.WARNING,
+                "System under load",
+                Instant.now()
+            )
+        )
+    )
+}
+
+@Preview(
+    showBackground = true,
+    name = "Unhealthy Status Preview"
+)
+@Composable
+fun UnhealthyStatusPreview() {
+    StatusBar(
+        state = MutableStateFlow(
+            StatusInfo(
+                Status.UNHEALTHY,
+                "System offline",
+                Instant.now()
+            )
+        )
+    )
+}
+
+@Preview(
+    showBackground = true,
+    name = "Loading Status Preview"
+)
+@Composable
+fun LoadingStatusPreview() {
+    StatusBar(
+        state = MutableStateFlow(
+            StatusInfo(
+                Status.LOADING,
+                "Awaiting update",
+                Instant.now()
+            )
+        )
+    )
 }
