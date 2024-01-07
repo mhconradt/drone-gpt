@@ -44,7 +44,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -79,6 +81,9 @@ import dji.v5.manager.interfaces.SDKManagerCallback
 import dji.v5.utils.common.LocationUtil.getLastLocation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 
 enum class Status {
@@ -88,7 +93,11 @@ enum class Status {
     LOADING
 }
 
-data class StatusInfo(val status: Status, val statusReason: String = "")
+data class StatusInfo(
+    val status: Status,
+    val statusReason: String = "",
+    val updatedAt: Instant = Instant.now()
+)
 
 private data class InternalStatusInfo(
     val connectedToDrone: Boolean? = null,
@@ -96,15 +105,30 @@ private data class InternalStatusInfo(
 ) {
     fun deriveStatusInfo(): StatusInfo {
         return if (connectedToDrone === null || virtualStickEnabled === null) {
-            StatusInfo(Status.LOADING, "Waiting to connect...")
+            StatusInfo(
+                Status.LOADING,
+                "Waiting to connect..."
+            )
         } else if (connectedToDrone && virtualStickEnabled) {
-            StatusInfo(Status.HEALTHY, "All systems go!")
+            StatusInfo(
+                Status.HEALTHY,
+                "All systems go!"
+            )
         } else if (connectedToDrone) {
-            StatusInfo(Status.WARNING, "Virtual stick mode disabled.")
+            StatusInfo(
+                Status.WARNING,
+                "Virtual stick mode disabled."
+            )
         } else if (virtualStickEnabled) {
-            StatusInfo(Status.WARNING, "Not connected to drone.")
+            StatusInfo(
+                Status.WARNING,
+                "Not connected to drone."
+            )
         } else {
-            StatusInfo(Status.UNHEALTHY, "Not able to fly.")
+            StatusInfo(
+                Status.UNHEALTHY,
+                "Not able to fly."
+            )
         }
 
     }
@@ -114,9 +138,17 @@ private data class InternalStatusInfo(
 class HealthViewModel : ViewModel() {
     private val TAG = this::class.java.simpleName
 
-    private var internalStatusInfo = InternalStatusInfo(null, null)
+    private var internalStatusInfo = InternalStatusInfo(
+        null,
+        null
+    )
 
-    private val _statusInfo = MutableStateFlow(StatusInfo(Status.LOADING, "Loading..."))
+    private val _statusInfo = MutableStateFlow(
+        StatusInfo(
+            Status.LOADING,
+            "Loading..."
+        )
+    )
 
     val statusInfo: StateFlow<StatusInfo> = _statusInfo
 
@@ -124,25 +156,40 @@ class HealthViewModel : ViewModel() {
         VirtualStickManager.getInstance().setVirtualStickStateListener(
             object : VirtualStickStateListener {
                 override fun onVirtualStickStateUpdate(stickState: VirtualStickState) {
-                    Log.i(TAG, "virtualStickEnabled (new): ${stickState.isVirtualStickEnable}")
+                    Log.i(
+                        TAG,
+                        "virtualStickEnabled (new): ${stickState.isVirtualStickEnable}"
+                    )
                     internalStatusInfo = internalStatusInfo.copy(
                         virtualStickEnabled = stickState.isVirtualStickEnable
                     )
                     val statusInfoUpdate = internalStatusInfo.deriveStatusInfo()
-                    Log.i(TAG, "statusInfo (new): $statusInfoUpdate")
+                    Log.i(
+                        TAG,
+                        "statusInfo (new): $statusInfoUpdate"
+                    )
                     _statusInfo.value = statusInfoUpdate
                 }
 
                 override fun onChangeReasonUpdate(reason: FlightControlAuthorityChangeReason) {
-                    Log.i(TAG, "")
+                    Log.i(
+                        TAG,
+                        ""
+                    )
                 }
 
             }
         )
-        KeyTools.createKey(FlightControllerKey.KeyConnection).listen(this, false) {
+        KeyTools.createKey(FlightControllerKey.KeyConnection).listen(
+            this,
+            false
+        ) {
             internalStatusInfo = internalStatusInfo.copy(connectedToDrone = it)
             val statusInfoUpdate = internalStatusInfo.deriveStatusInfo()
-            Log.i(TAG, "statusInfo (new): $statusInfoUpdate")
+            Log.i(
+                TAG,
+                "statusInfo (new): $statusInfoUpdate"
+            )
             _statusInfo.value = statusInfoUpdate
         }
     }
@@ -152,7 +199,14 @@ data class Size(val width: Int, val height: Int)
 
 @Composable
 fun DroneCameraView(modifier: Modifier = Modifier) {
-    var surfaceSize by remember { mutableStateOf(Size(0, 0)) }
+    var surfaceSize by remember {
+        mutableStateOf(
+            Size(
+                0,
+                0
+            )
+        )
+    }
 
     AndroidView(
         modifier = modifier,
@@ -165,7 +219,10 @@ fun DroneCameraView(modifier: Modifier = Modifier) {
                         width: Int,
                         height: Int
                     ) {
-                        surfaceSize = Size(width, height)
+                        surfaceSize = Size(
+                            width,
+                            height
+                        )
                         // Now surfaceSize holds the width and height of the surface
                     }
 
@@ -235,15 +292,29 @@ fun ChatScreen(viewModel: Agent) {
                         Button(
                             modifier = Modifier.padding(8.dp),
                             onClick = {
-                                Log.i("ChatScreen", "Launching coroutine...")
+                                Log.i(
+                                    "ChatScreen",
+                                    "Launching coroutine..."
+                                )
                                 // Launching a coroutine
-                                Log.i("ChatScreen", "Launched coroutine...")
+                                Log.i(
+                                    "ChatScreen",
+                                    "Launched coroutine..."
+                                )
                                 try {
-                                    viewModel.run(ChatUserMessage("user", text))
+                                    viewModel.run(
+                                        ChatUserMessage(
+                                            "user",
+                                            text
+                                        )
+                                    )
                                     // Switch back to the Main thread for UI operations
                                     text = ""
                                 } catch (e: Exception) {
-                                    Log.e("ChatScreen", e.stackTraceToString())
+                                    Log.e(
+                                        "ChatScreen",
+                                        e.stackTraceToString()
+                                    )
                                     TODO("Not yet implemented")
                                 }
                             }
@@ -269,31 +340,49 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        Log.d("MainActivity", "onStart")
+        Log.d(
+            "MainActivity",
+            "onStart"
+        )
     }
 
     override fun onResume() {
         super.onResume()
-        Log.d("MainActivity", "onResume")
+        Log.d(
+            "MainActivity",
+            "onResume"
+        )
     }
 
     override fun onPause() {
         super.onPause()
-        Log.d("MainActivity", "onPause")
+        Log.d(
+            "MainActivity",
+            "onPause"
+        )
     }
 
     override fun onStop() {
         super.onStop()
-        Log.d("MainActivity", "onStop")
+        Log.d(
+            "MainActivity",
+            "onStop"
+        )
     }
 
     override fun onDestroy() {
         super.onDestroy()
-        Log.d("MainActivity", "onDestroy")
+        Log.d(
+            "MainActivity",
+            "onDestroy"
+        )
     }
 
     private fun checkLocationPermission() {
-        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+        if (ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            )
             != PackageManager.PERMISSION_GRANTED
         ) {
             // Permission is not granted, request it
@@ -315,7 +404,7 @@ class MainActivity : ComponentActivity() {
             DroneGPTTheme {
 
                 Column {
-                    StatusInfoComponent(healthViewModel)
+                    StatusBar(healthViewModel.statusInfo)
                     Box(
                         modifier = Modifier.fillMaxSize(),
                         contentAlignment = Alignment.TopEnd // Aligns children to the bottom start (bottom left)
@@ -324,7 +413,10 @@ class MainActivity : ComponentActivity() {
                         DroneCameraView(
                             modifier = Modifier
                                 .padding(16.dp)
-                                .size(200.dp, 150.dp)
+                                .size(
+                                    200.dp,
+                                    150.dp
+                                )
                         )
                     }
                 }
@@ -336,100 +428,158 @@ class MainActivity : ComponentActivity() {
 
 
     private fun registerApp() {
-        SDKManager.getInstance().init(this, object : SDKManagerCallback {
-            override fun onInitProcess(event: DJISDKInitEvent?, totalProcess: Int) {
-                Log.i(TAG, "onInitProcess: ")
-                if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
-                    Log.i(TAG, "registerApp()")
-                    SDKManager.getInstance().registerApp()
-                }
-            }
-
-            override fun onRegisterSuccess() {
-                Log.i(TAG, "onRegisterSuccess: ")
-            }
-
-            override fun onRegisterFailure(error: IDJIError?) {
-                Log.i(TAG, "onRegisterFailure: ")
-            }
-
-            override fun onProductConnect(productId: Int) {
-                Log.i(TAG, "onProductConnect: ")
-                val statusManager = DeviceStatusManager.getInstance()
-                Log.i(TAG, "Current status: ${statusManager.currentDJIDeviceStatus}")
-
-                val error = UASRemoteIDManager.getInstance()
-                    .setUASRemoteIDAreaStrategy(AreaStrategy.US_STRATEGY)
-
-                if (error != null) {
-                    Log.e(TAG, "setUASRemoteIDAreaStrategy error: $error")
+        SDKManager.getInstance().init(
+            this,
+            object : SDKManagerCallback {
+                override fun onInitProcess(event: DJISDKInitEvent?, totalProcess: Int) {
+                    Log.i(
+                        TAG,
+                        "onInitProcess: "
+                    )
+                    if (event == DJISDKInitEvent.INITIALIZE_COMPLETE) {
+                        Log.i(
+                            TAG,
+                            "registerApp()"
+                        )
+                        SDKManager.getInstance().registerApp()
+                    }
                 }
 
-                val stickManager = VirtualStickManager.getInstance()
+                override fun onRegisterSuccess() {
+                    Log.i(
+                        TAG,
+                        "onRegisterSuccess: "
+                    )
+                }
 
-                stickManager.setVirtualStickStateListener(
-                    object : VirtualStickStateListener {
-                        override fun onVirtualStickStateUpdate(stickState: VirtualStickState) {
-                            println("onVirtualStickStateUpdate ${stickState.isVirtualStickEnable} ${stickState.isVirtualStickAdvancedModeEnabled}")
-                        }
+                override fun onRegisterFailure(error: IDJIError?) {
+                    Log.i(
+                        TAG,
+                        "onRegisterFailure: "
+                    )
+                }
 
-                        override fun onChangeReasonUpdate(reason: FlightControlAuthorityChangeReason) {
-                            println("onChangeReasonUpdate $reason")
-                        }
+                override fun onProductConnect(productId: Int) {
+                    Log.i(
+                        TAG,
+                        "onProductConnect: "
+                    )
+                    val statusManager = DeviceStatusManager.getInstance()
+                    Log.i(
+                        TAG,
+                        "Current status: ${statusManager.currentDJIDeviceStatus}"
+                    )
+
+                    val error = UASRemoteIDManager.getInstance()
+                        .setUASRemoteIDAreaStrategy(AreaStrategy.US_STRATEGY)
+
+                    if (error != null) {
+                        Log.e(
+                            TAG,
+                            "setUASRemoteIDAreaStrategy error: $error"
+                        )
                     }
-                )
 
-                val rcConnected = KeyTools.createKey(RemoteControllerKey.KeyConnection).get()
-                val rcFlightMode =
-                    KeyTools.createKey(FlightControllerKey.KeyRemoteControllerFlightMode).get()
-                val flightMode = KeyTools.createKey(FlightControllerKey.KeyFlightMode).get()
-                val multiControl =
-                    KeyTools.createKey(RemoteControllerKey.KeyMultiControlIsSupported).get()
-                println("virtualStick $multiControl $rcConnected $rcFlightMode $flightMode")
+                    val stickManager = VirtualStickManager.getInstance()
 
-                stickManager.enableVirtualStick(
-                    object : CompletionCallback {
-                        override fun onSuccess() {
-                            Log.i(TAG, "enableVirtualStick() succeeded")
+                    stickManager.setVirtualStickStateListener(
+                        object : VirtualStickStateListener {
+                            override fun onVirtualStickStateUpdate(stickState: VirtualStickState) {
+                                println(
+                                    "onVirtualStickStateUpdate ${stickState.isVirtualStickEnable} ${stickState.isVirtualStickAdvancedModeEnabled}"
+                                )
+                            }
+
+                            override fun onChangeReasonUpdate(
+                                reason: FlightControlAuthorityChangeReason
+                            ) {
+                                println("onChangeReasonUpdate $reason")
+                            }
                         }
+                    )
 
-                        override fun onFailure(error: IDJIError) {
-                            Log.e(TAG, "enableVirtualStick() failed: $error")
+                    val rcConnected = KeyTools.createKey(RemoteControllerKey.KeyConnection).get()
+                    val rcFlightMode =
+                        KeyTools.createKey(FlightControllerKey.KeyRemoteControllerFlightMode).get()
+                    val flightMode = KeyTools.createKey(FlightControllerKey.KeyFlightMode).get()
+                    val multiControl =
+                        KeyTools.createKey(RemoteControllerKey.KeyMultiControlIsSupported).get()
+                    println("virtualStick $multiControl $rcConnected $rcFlightMode $flightMode")
+
+                    stickManager.enableVirtualStick(
+                        object : CompletionCallback {
+                            override fun onSuccess() {
+                                Log.i(
+                                    TAG,
+                                    "enableVirtualStick() succeeded"
+                                )
+                            }
+
+                            override fun onFailure(error: IDJIError) {
+                                Log.e(
+                                    TAG,
+                                    "enableVirtualStick() failed: $error"
+                                )
+                            }
                         }
-                    }
-                )
-                Log.i(TAG, "Called enableVirtualStick()")
-                healthViewModel.initialize()
-                VisionManager.initialize()
-                StateManager.initialize()
-            }
+                    )
+                    Log.i(
+                        TAG,
+                        "Called enableVirtualStick()"
+                    )
+                    healthViewModel.initialize()
+                    VisionManager.initialize()
+                    StateManager.initialize()
+                }
 
-            override fun onProductDisconnect(productId: Int) {
-                Log.i(TAG, "onProductDisconnect: ")
-            }
+                override fun onProductDisconnect(productId: Int) {
+                    Log.i(
+                        TAG,
+                        "onProductDisconnect: "
+                    )
+                }
 
-            override fun onProductChanged(productId: Int) {
-                Log.i(TAG, "onProductChanged: ")
-            }
+                override fun onProductChanged(productId: Int) {
+                    Log.i(
+                        TAG,
+                        "onProductChanged: "
+                    )
+                }
 
-            override fun
-                    onDatabaseDownloadProgress(current: Long, total: Long) {
-                Log.i(TAG, "onDatabaseDownloadProgress: ${current / total}")
-            }
-        })
+                override fun
+                        onDatabaseDownloadProgress(current: Long, total: Long) {
+                    Log.i(
+                        TAG,
+                        "onDatabaseDownloadProgress: ${current / total}"
+                    )
+                }
+            })
     }
 }
 
+fun formatInstantToPattern(instant: Instant, zoneId: ZoneId): String {
+    val formatter = DateTimeFormatter.ofPattern("h:mm a") // "a" is the AM/PM marker
+    val zonedDateTime = instant.atZone(zoneId)
+    return formatter.format(zonedDateTime)
+}
+
 @Composable
-fun StatusInfoComponent(healthViewModel: HealthViewModel) {
-    val statusInfo by healthViewModel.statusInfo.collectAsState()
+fun StatusBar(state: StateFlow<StatusInfo>) {
+    val statusInfo by state.collectAsState()
+    val userTimeZone = ZoneId.systemDefault()
+    val formattedTime = formatInstantToPattern(
+        statusInfo.updatedAt,
+        userTimeZone
+    )
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .background(Color.LightGray)
-            .padding(16.dp)
+            .padding(8.dp)
     ) {
-        Row {
+        Row(
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             when (statusInfo.status) {
                 Status.HEALTHY -> Icon(
                     Icons.Rounded.CheckCircle,
@@ -455,7 +605,18 @@ fun StatusInfoComponent(healthViewModel: HealthViewModel) {
                     tint = Color.DarkGray,
                 )
             }
-            Text(statusInfo.statusReason, modifier = Modifier.padding(start = 8.dp))
+            Column(
+                modifier = Modifier.padding(start = 8.dp)
+            ) {
+                Text(statusInfo.statusReason)
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "$formattedTime",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    
+                    )
+            }
         }
     }
 }
@@ -465,7 +626,10 @@ fun MessageCard(msg: PlainTextMessage) {
     if (msg is ChatAssistantMessage && msg.isControl()) {
         return
     }
-    Log.d("MessageCard", "Rendering message: $msg")
+    Log.d(
+        "MessageCard",
+        "Rendering message: $msg"
+    )
     Row(modifier = Modifier.padding(all = 8.dp)) {
         var isExpanded by remember { mutableStateOf(false) }
         val surfaceColor by animateColorAsState(

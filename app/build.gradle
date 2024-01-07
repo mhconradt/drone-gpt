@@ -21,7 +21,7 @@ android {
 
     defaultConfig {
         applicationId "com.example.dronegpt"
-        minSdk 23 //DJI MSDK supported version
+        minSdk 26 //DJI MSDK supported version
         targetSdk 34 //DJI MSDK supported version
         versionCode 1
         versionName "1.0"
