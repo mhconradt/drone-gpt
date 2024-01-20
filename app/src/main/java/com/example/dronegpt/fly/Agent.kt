@@ -248,7 +248,7 @@ fun convertNV21ToJpeg(nv21ImageData: ByteArray, width: Int, height: Int): ByteAr
     val yuvImage = YuvImage(nv21ImageData, ImageFormat.NV21, width, height, null)
     val outputStream = ByteArrayOutputStream()
     // TODO: Check different sizes
-    yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, outputStream)
+    yuvImage.compressToJpeg(Rect(0, 0, width, height), 50, outputStream)
     return outputStream.toByteArray()
 }
 
@@ -490,10 +490,12 @@ class Agent : ViewModel() {
                         TextContentPart("text", state)
                     )
                     if (imageSnapshot != null) {
+                        val b64 = Base64.encode(imageSnapshot)
+                        Log.i(TAG, "Base64 length: ${b64.length}")
                         contentParts.add(
                             ImageUrlContentPart(
                                 "image_url", RawImageUrl(
-                                    "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
+                                    "data:image/jpeg;base64,$b64",
                                     "low"
                                 )
                             )
@@ -599,7 +601,7 @@ class Agent : ViewModel() {
             // Most recent image message
             filtered.add(messages[messages.size - 1])
         }
-        return messages
+        return filtered
     }
 }
 

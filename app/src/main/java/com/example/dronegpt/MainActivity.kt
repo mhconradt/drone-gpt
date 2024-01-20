@@ -78,6 +78,7 @@ import dji.v5.manager.aircraft.virtualstick.VirtualStickStateListener
 import dji.v5.manager.datacenter.camera.CameraStreamManager
 import dji.v5.manager.diagnostic.DeviceStatusManager
 import dji.v5.manager.interfaces.ICameraStreamManager
+import dji.v5.manager.interfaces.IVirtualStickManager
 import dji.v5.manager.interfaces.SDKManagerCallback
 import dji.v5.utils.common.LocationUtil.getLastLocation
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -507,6 +508,19 @@ class MainActivity : ComponentActivity() {
                     println("virtualStick $multiControl $rcConnected $rcFlightMode $flightMode")
                     healthViewModel.initialize()
 
+                    enableVirtualStick(stickManager)
+                    Log.i(
+                        TAG,
+                        "Called enableVirtualStick()"
+                    )
+                    VisionManager.initialize()
+                    StateManager.initialize()
+                }
+
+                private fun enableVirtualStick(stickManager: IVirtualStickManager, tries: Int = 5) {
+                    if (tries == 0) {
+                        return
+                    }
                     stickManager.enableVirtualStick(
                         object : CompletionCallback {
                             override fun onSuccess() {
@@ -519,17 +533,15 @@ class MainActivity : ComponentActivity() {
                             override fun onFailure(error: IDJIError) {
                                 Log.e(
                                     TAG,
-                                    "enableVirtualStick() failed: $error"
+                                    "enableVirtualStick() failed: $error. $tries tries remain."
+                                )
+                                enableVirtualStick(
+                                    stickManager,
+                                    tries - 1
                                 )
                             }
                         }
                     )
-                    Log.i(
-                        TAG,
-                        "Called enableVirtualStick()"
-                    )
-                    VisionManager.initialize()
-                    StateManager.initialize()
                 }
 
                 override fun onProductDisconnect(productId: Int) {
