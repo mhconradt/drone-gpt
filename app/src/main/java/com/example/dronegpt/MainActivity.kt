@@ -101,16 +101,11 @@ data class StatusInfo(
 )
 
 private data class InternalStatusInfo(
-    val connectedToDrone: Boolean? = null,
-    val virtualStickEnabled: Boolean? = null,
+    var connectedToDrone: Boolean,
+    var virtualStickEnabled: Boolean,
 ) {
     fun deriveStatusInfo(): StatusInfo {
-        return if (connectedToDrone === null || virtualStickEnabled === null) {
-            StatusInfo(
-                Status.LOADING,
-                "Waiting to connect..."
-            )
-        } else if (connectedToDrone && virtualStickEnabled) {
+        return if (connectedToDrone && virtualStickEnabled) {
             StatusInfo(
                 Status.HEALTHY,
                 "All systems go!"
@@ -140,8 +135,8 @@ class HealthViewModel : ViewModel() {
     private val TAG = this::class.java.simpleName
 
     private var internalStatusInfo = InternalStatusInfo(
-        null,
-        null
+        false,
+        false
     )
 
     private val _statusInfo = MutableStateFlow(
@@ -153,7 +148,23 @@ class HealthViewModel : ViewModel() {
 
     val statusInfo: StateFlow<StatusInfo> = _statusInfo
 
+    private fun syncStatusInfo() {
+        Log.i(
+            TAG,
+            "internalStatusInfo (new): $internalStatusInfo"
+        )
+        val statusInfoUpdate = internalStatusInfo.deriveStatusInfo()
+        Log.i(
+            TAG,
+            "statusInfo (new): $statusInfoUpdate"
+        )
+        _statusInfo.value = statusInfoUpdate
+    }
+
     fun initialize() {
+        // Probably already connected to the drone.
+        internalStatusInfo.connectedToDrone =
+            KeyTools.createKey(FlightControllerKey.KeyConnection).get() == true
         VirtualStickManager.getInstance().setVirtualStickStateListener(
             object : VirtualStickStateListener {
                 override fun onVirtualStickStateUpdate(stickState: VirtualStickState) {
@@ -161,15 +172,8 @@ class HealthViewModel : ViewModel() {
                         TAG,
                         "virtualStickEnabled (new): ${stickState.isVirtualStickEnable}"
                     )
-                    internalStatusInfo = internalStatusInfo.copy(
-                        virtualStickEnabled = stickState.isVirtualStickEnable
-                    )
-                    val statusInfoUpdate = internalStatusInfo.deriveStatusInfo()
-                    Log.i(
-                        TAG,
-                        "statusInfo (new): $statusInfoUpdate"
-                    )
-                    _statusInfo.value = statusInfoUpdate
+                    internalStatusInfo.virtualStickEnabled = stickState.isVirtualStickEnable
+                    syncStatusInfo()
                 }
 
                 override fun onChangeReasonUpdate(reason: FlightControlAuthorityChangeReason) {
@@ -183,15 +187,10 @@ class HealthViewModel : ViewModel() {
         )
         KeyTools.createKey(FlightControllerKey.KeyConnection).listen(
             this,
-            false
+            true
         ) {
-            internalStatusInfo = internalStatusInfo.copy(connectedToDrone = it)
-            val statusInfoUpdate = internalStatusInfo.deriveStatusInfo()
-            Log.i(
-                TAG,
-                "statusInfo (new): $statusInfoUpdate"
-            )
-            _statusInfo.value = statusInfoUpdate
+            internalStatusInfo.connectedToDrone = it == true
+            syncStatusInfo()
         }
     }
 }
@@ -506,6 +505,7 @@ class MainActivity : ComponentActivity() {
                     val multiControl =
                         KeyTools.createKey(RemoteControllerKey.KeyMultiControlIsSupported).get()
                     println("virtualStick $multiControl $rcConnected $rcFlightMode $flightMode")
+                    healthViewModel.initialize()
 
                     stickManager.enableVirtualStick(
                         object : CompletionCallback {
@@ -528,7 +528,6 @@ class MainActivity : ComponentActivity() {
                         TAG,
                         "Called enableVirtualStick()"
                     )
-                    healthViewModel.initialize()
                     VisionManager.initialize()
                     StateManager.initialize()
                 }

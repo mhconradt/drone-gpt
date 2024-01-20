@@ -58,6 +58,9 @@ drone, such as position, velocity, and the current control positions.
 These instructions MUST be syntactically valid JSON objects, for example, they must not have comments or else the drone will crash.
 Keep in mind, you will only be able to adjust the controls once every 5-10 seconds, so fly slowly and avoid collision courses with nearby objects.
 
+Once the user's request is fulfilled and the drone is not moving, send a plain text message. It must
+NOT contain curly braces, or else it will be mistaken for an instruction and the drone will crash.
+
 Here are some examples:
 ### Taking off (Signals the drone to take off and hover at 1.2m, required if altitude is zero) ###
 User: Take off
@@ -244,6 +247,7 @@ object StateManager {
 fun convertNV21ToJpeg(nv21ImageData: ByteArray, width: Int, height: Int): ByteArray {
     val yuvImage = YuvImage(nv21ImageData, ImageFormat.NV21, width, height, null)
     val outputStream = ByteArrayOutputStream()
+    // TODO: Check different sizes
     yuvImage.compressToJpeg(Rect(0, 0, width, height), 100, outputStream)
     return outputStream.toByteArray()
 }
@@ -264,6 +268,8 @@ fun convertRGBA8888ToJpeg(rgbaData: ByteArray, width: Int, height: Int): ByteArr
 }
 
 object VisionManager {
+    private val TAG = this::class.java.simpleName
+
     var image: ByteArray? = null
 
     fun initialize() {
@@ -274,6 +280,7 @@ object VisionManager {
             ComponentIndexType.LEFT_OR_MAIN, ICameraStreamManager.FrameFormat.NV21
         ) { frameData, offset, length, width, height, format ->
             val relevantData = frameData.copyOfRange(offset, offset + length)
+            Log.i(TAG, "Got ${width}px x ${height}px image from camera.")
             // TODO: Push this outside of the loop. A high % of these frames are ignored.
             image = when (format) {
                 ICameraStreamManager.FrameFormat.RGBA_8888 -> {
@@ -288,6 +295,8 @@ object VisionManager {
                     throw java.lang.IllegalStateException(format.toString())
                 }
             }
+
+            Log.i(TAG, "Encoded image to JPEG: ${image!!.size} bytes")
         }
     }
 }
@@ -485,7 +494,7 @@ class Agent : ViewModel() {
                             ImageUrlContentPart(
                                 "image_url", RawImageUrl(
                                     "data:image/jpeg;base64,${Base64.encode(imageSnapshot)}",
-                                    "An image captured from the drone's camera."
+                                    "low"
                                 )
                             )
                         )
@@ -501,6 +510,7 @@ class Agent : ViewModel() {
                     val response = try {
                         ChatCompletionAPI.create(request)
                     } catch (e: java.net.SocketTimeoutException) {
+                        Log.e(TAG, "Timed out.")
                         FlightManager.execute(Stop())
                         // Adding for consistency
                         messages.add(
@@ -553,6 +563,7 @@ class Agent : ViewModel() {
                     }
                 }
             } catch (e: Exception) {
+                Log.e(TAG, "Error getting instruction: $e")
                 FlightManager.execute(Stop())
             }
         }

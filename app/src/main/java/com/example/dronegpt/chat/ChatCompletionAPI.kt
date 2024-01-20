@@ -25,6 +25,7 @@ object ChatCompletionAPI {
         try {
             val jsonRequest = gson.toJson(request)
             val body = jsonRequest.toRequestBody("application/json; charset=utf-8".toMediaType())
+
             val httpRequest = Request.Builder()
                 .url("https://api.openai.com/v1/chat/completions")
                 .post(body)
@@ -37,6 +38,8 @@ object ChatCompletionAPI {
 
             Log.d(TAG, httpRequest.toString())
 
+            Log.d(TAG, "Sending ${httpRequest.body?.contentLength()} bytes")
+
             client.newCall(httpRequest).execute().use { response ->
 
                 if (!response.isSuccessful) {
@@ -44,6 +47,8 @@ object ChatCompletionAPI {
                 }
 
                 val jsonResponse = response.body?.string()
+
+                Log.d(TAG, "Received ${jsonResponse?.length} bytes")
 
                 return gson.fromJson(jsonResponse, ChatCompletionResponse::class.java)
             }
